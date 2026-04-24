@@ -36,6 +36,27 @@ class Settings(BaseSettings):
     port: int = 8081
     log_level: str = "INFO"
 
+    # Auto-fix pipeline (the core workflow: error → triage issue → PR).
+    # target_* is the repo the agent proposes code fixes against; kept separate
+    # from the output repo so fixes can land in a *code* repo while triage
+    # issues continue to land in an issue-only repo.
+    # `autofix_enabled` is a runtime kill-switch: flip to False to suspend PR
+    # creation during incidents without redeploying.
+    autofix_enabled: bool = False
+    autofix_target_owner: str = ""
+    autofix_target_repo: str = ""
+    autofix_base_branch: str = "main"
+    autofix_test_cmd: str = "pytest -q"
+    autofix_lint_cmd: str = ""  # optional, e.g. "ruff check ."
+    autofix_test_timeout_s: int = 300
+    autofix_max_retries: int = 1
+    autofix_max_diff_lines: int = 200
+    autofix_workdir: str = "/tmp/log-triage-agent-ws"
+    autofix_min_confidence: float = 0.5
+    autofix_block_label: str = "no-auto-fix"
+    autofix_git_user_name: str = "log-triage-agent[bot]"
+    autofix_git_user_email: str = "log-triage-agent@users.noreply.github.com"
+
     @property
     def input_full_repo(self) -> str:
         return f"{self.github_input_owner}/{self.github_input_repo}"
@@ -43,6 +64,10 @@ class Settings(BaseSettings):
     @property
     def output_full_repo(self) -> str:
         return f"{self.github_output_owner}/{self.github_output_repo}"
+
+    @property
+    def autofix_target_full_repo(self) -> str:
+        return f"{self.autofix_target_owner}/{self.autofix_target_repo}"
 
 
 @lru_cache

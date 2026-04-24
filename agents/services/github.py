@@ -71,6 +71,50 @@ def comment_output_issue(number: int, body: str) -> None:
     output_repo().get_issue(number=number).create_comment(body)
 
 
+# ---------- auto-fix target repo (code fixes via PR) ----------
+
+def autofix_target_repo() -> Repository:
+    return _client().get_repo(get_settings().autofix_target_full_repo)
+
+
+def autofix_clone_url() -> str:
+    """HTTPS clone URL with the agent's token baked in for push auth.
+
+    Keep this server-side only; never log the result.
+    """
+    settings = get_settings()
+    return (
+        f"https://x-access-token:{settings.github_token}@github.com/"
+        f"{settings.autofix_target_full_repo}.git"
+    )
+
+
+def open_autofix_pr(
+    *,
+    branch: str,
+    title: str,
+    body: str,
+    labels: list[str],
+    draft: bool = False,
+):
+    """Open a PR against autofix_target.autofix_base_branch. Returns PyGithub PR."""
+    settings = get_settings()
+    repo = autofix_target_repo()
+    pr = repo.create_pull(
+        title=title,
+        body=body,
+        head=branch,
+        base=settings.autofix_base_branch,
+        draft=draft,
+    )
+    if labels:
+        try:
+            repo.get_issue(pr.number).add_to_labels(*labels)
+        except Exception as exc:  # labels are best-effort
+            log.warning("pr.label_failed", pr=pr.number, error=str(exc))
+    return pr
+
+
 # ---------- shared ----------
 
 def render_fingerprint_marker(fingerprint: str) -> str:

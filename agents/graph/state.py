@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from shared.models import ErrorPayload, TriageResult
+from shared.models import AutoFixOutcome, ErrorPayload, TriageResult
 
 
 class TriageState(TypedDict, total=False):
@@ -10,4 +10,5 @@ class TriageState(TypedDict, total=False):
     issue_labels: list[str]
     payload: ErrorPayload
     result: TriageResult
+    autofix: AutoFixOutcome
     error: str

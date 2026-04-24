@@ -40,3 +40,47 @@ class TriageResult(BaseModel):
     labels: list[str] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of: int | None = None
+
+
+RiskLevel = Literal["low", "medium", "high"]
+
+
+class SuspectSite(BaseModel):
+    """The file/location in the target repo likely responsible for the error."""
+
+    repo_owner: str
+    repo_name: str
+    file_path: str
+    line: int | None = None
+    symbol: str | None = None
+    confidence: float = 0.0  # 0..1
+    evidence: str = ""  # human-readable reason (for logging/PR body)
+
+
+class ProposedPatch(BaseModel):
+    """Unified diff proposed by the LLM."""
+
+    diff: str
+    rationale: str
+    risk: RiskLevel = "medium"
+    changed_files: list[str] = Field(default_factory=list)
+
+
+class VerifyResult(BaseModel):
+    applied: bool = False
+    tests_passed: bool = False
+    attempts: int = 0
+    last_output: str = ""  # truncated stdout/stderr for PR body
+    failure_reason: str | None = None
+
+
+class AutoFixOutcome(BaseModel):
+    """End-state of the auto-fix branch. Attached to TriageState when attempted."""
+
+    attempted: bool = False
+    skipped_reason: str | None = None
+    suspect: SuspectSite | None = None
+    patch: ProposedPatch | None = None
+    verify: VerifyResult | None = None
+    pr_number: int | None = None
+    pr_url: str | None = None
