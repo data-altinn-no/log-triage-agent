@@ -47,3 +47,36 @@ def test_pick_best_skips_site_packages():
 def test_pick_best_returns_none_on_empty():
     assert pick_best_frame([]) is None
     assert extract_frames("") == []
+
+
+def test_strips_github_actions_checkout_root():
+    """GitHub Actions checks out at /home/runner/work/<repo>/<repo>/.
+
+    The generic "/work/" marker used to win here and produce
+    "work/core/core/Dan.Core/..." — a path that does not exist in the clone,
+    so every subsequent read failed. Real frames from data-altinn-no/core.
+    """
+    stack = (
+        "   at Dan.Core.Services.CosmosDbAccreditationRepository.UpdateAccreditationAsync() in "
+        "/home/runner/work/core/core/Dan.Core/Services/"
+        "CosmosDbAccreditationRepository.cs:line 129"
+    )
+    best = pick_best_frame(extract_frames(stack))
+    assert best is not None
+    assert best.file_path == "Dan.Core/Services/CosmosDbAccreditationRepository.cs"
+    assert best.line == 129
+
+
+def test_actions_root_rule_requires_the_doubled_repo_name():
+    """The strip is deliberately narrow: only the doubled-repo-name shape.
+
+    Anything else under /work/ falls through to the pre-existing generic
+    marker, which keeps the "work/" segment. That fallback is not obviously
+    right, but no such path has been observed in real telemetry — every
+    Actions frame in the 13,403-issue census used the doubled form. Asserted
+    here so the narrowness is a decision on record, not an accident.
+    """
+    stack = "   at X.Y() in /home/runner/work/core/other/Dan.Core/Foo.cs:line 10"
+    best = pick_best_frame(extract_frames(stack))
+    assert best is not None
+    assert best.file_path == "work/core/other/Dan.Core/Foo.cs"

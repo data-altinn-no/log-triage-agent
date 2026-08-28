@@ -1,7 +1,10 @@
-"""Send a fake GitHub `issues.opened` webhook to a locally running dan-agent.
+"""Send a fake GitHub `issues.opened` webhook to a locally running log-triage-agent.
 
 Usage:
-    python scripts/send_test_webhook.py [--url http://localhost:8081/webhooks/github]
+    python scripts/send_test_webhook.py \
+        --payload <issue-body.md> \
+        --title "[prod] System.NullReferenceException in func-estilda-prod-prod" \
+        --number 4221
 """
 
 from __future__ import annotations
@@ -12,10 +15,11 @@ import hmac
 import json
 import os
 import sys
+from pathlib import Path
 
 import httpx
 
-SAMPLE_BODY = """### Exception
+DEFAULT_BODY = """### Exception
 System.NullReferenceException
 
 ### Message
@@ -46,25 +50,43 @@ at Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.Execute()
 ```
 """
 
-PAYLOAD = {
-    "action": "opened",
-    "issue": {
-        "number": 9999,
-        "title": "[prod] System.NullReferenceException in data.altinn.no.api",
-        "body": SAMPLE_BODY,
-        "labels": [{"name": "auto-triage"}, {"name": "prod"}],
-    },
-    "repository": {"full_name": "data-altinn-no/core"},
-}
+
+def build_payload(*, number: int, title: str, body: str, repo: str) -> dict:
+    return {
+        "action": "opened",
+        "issue": {
+            "number": number,
+            "title": title,
+            "body": body,
+            "labels": [{"name": "auto-triage"}, {"name": "prod"}],
+        },
+        "repository": {"full_name": repo},
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8081/webhooks/github")
     parser.add_argument("--secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", ""))
+    parser.add_argument(
+        "--payload",
+        help="Path to a file containing the issue body (Function template). "
+        "If omitted, a baked-in NullReference fixture is used.",
+    )
+    parser.add_argument(
+        "--title",
+        default="[prod] System.NullReferenceException in data.altinn.no.api",
+    )
+    parser.add_argument("--number", type=int, default=9999)
+    parser.add_argument("--repo", default="data-altinn-no/log-triage")
     args = parser.parse_args()
 
-    body = json.dumps(PAYLOAD).encode("utf-8")
+    body_text = Path(args.payload).read_text() if args.payload else DEFAULT_BODY
+    payload = build_payload(
+        number=args.number, title=args.title, body=body_text, repo=args.repo
+    )
+
+    body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json", "X-GitHub-Event": "issues"}
     if args.secret:
         sig = "sha256=" + hmac.new(args.secret.encode(), body, hashlib.sha256).hexdigest()

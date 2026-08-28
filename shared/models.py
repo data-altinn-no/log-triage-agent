@@ -58,12 +58,16 @@ class SuspectSite(BaseModel):
 
 
 class ProposedPatch(BaseModel):
-    """Unified diff proposed by the LLM."""
+    """Unified diff produced by the edit-tool agent loop."""
 
     diff: str
     rationale: str
     risk: RiskLevel = "medium"
     changed_files: list[str] = Field(default_factory=list)
+    # Commit the diff was generated against. `fix` pins its own checkout to this
+    # SHA before applying, so the patch can never fail on context drift between
+    # the plan clone and the fix clone (e.g. a merge landing in between).
+    base_sha: str | None = None
 
 
 class VerifyResult(BaseModel):

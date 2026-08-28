@@ -15,7 +15,7 @@ def _should_process(action: str, labels: list[str]) -> bool:
     settings = get_settings()
     if action not in {"opened", "reopened", "labeled"}:
         return False
-    return settings.triage_label in labels
+    return bool(settings.triage_labels & set(labels))
 
 
 @router.post("/github", status_code=status.HTTP_202_ACCEPTED)

@@ -36,6 +36,11 @@ def fix_node(state: TriageState) -> TriageState:
                 base_branch=settings.autofix_base_branch,
                 depth=50,
             )
+            # Pin to the commit `plan` generated the diff against. Without this a
+            # merge landing on the base branch between plan and fix would make an
+            # otherwise-correct patch fail to apply.
+            if outcome.patch.base_sha:
+                ws.checkout_sha(outcome.patch.base_sha)
             ws.configure_identity(
                 settings.autofix_git_user_name,
                 settings.autofix_git_user_email,
@@ -52,8 +57,9 @@ def fix_node(state: TriageState) -> TriageState:
             verify.applied = True
         except WorkspaceError as exc:
             verify.failure_reason = f"apply failed: {exc}"
+            outcome.skipped_reason = verify.failure_reason
             outcome.verify = verify
-            log.info("fix.apply_failed", error=str(exc))
+            log.info("fix.apply_failed", error=str(exc), diff=outcome.patch.diff)
             return {"autofix": outcome}
 
         # 2. Run tests (single attempt in v1; bounded retry is a follow-up)
@@ -76,8 +82,15 @@ def fix_node(state: TriageState) -> TriageState:
         verify.attempts = attempts
 
         if not verify.tests_passed:
+            outcome.skipped_reason = verify.failure_reason
             outcome.verify = verify
-            log.info("fix.tests_failed", reason=verify.failure_reason, attempts=attempts)
+            log.info(
+                "fix.tests_failed",
+                reason=verify.failure_reason,
+                attempts=attempts,
+                output_tail=verify.last_output[-1500:],
+                diff=outcome.patch.diff,
+            )
             return {"autofix": outcome}
 
         # 3. Optional lint (non-fatal)

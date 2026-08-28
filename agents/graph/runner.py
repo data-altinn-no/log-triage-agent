@@ -12,6 +12,7 @@ from agents.graph.nodes.plan import plan_node
 from agents.graph.nodes.publish import publish_node
 from agents.graph.state import TriageState
 from shared.config import get_settings
+from shared.tracing import langchain_config
 
 
 def _route_after_enrich(state: TriageState) -> str:
@@ -73,4 +74,7 @@ def run_triage(*, issue_number: int, title: str, body: str, labels: list[str]) -
         "issue_body": body,
         "issue_labels": labels,
     }
-    return graph.invoke(initial)
+    return graph.invoke(
+        initial,
+        config=langchain_config(issue_number=issue_number, issue_title=title),
+    )

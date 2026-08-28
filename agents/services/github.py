@@ -41,7 +41,11 @@ def get_input_issue(number: int) -> Issue:
 
 
 def close_input_issue(number: int, *, link_to_public: str | None, reason: str) -> None:
-    issue = get_input_issue(number)
+    try:
+        issue = get_input_issue(number)
+    except Exception:
+        log.warning("close_input_issue.not_found", number=number)
+        return
     msg = reason
     if link_to_public:
         msg += f"\n\nPublished to: {link_to_public}"

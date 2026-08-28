@@ -12,15 +12,22 @@ async def verify_github_signature(
     request: Request,
     x_hub_signature_256: str | None = Header(default=None),
 ) -> bytes:
-    secret = get_settings().github_webhook_secret
+    settings = get_settings()
+    secret = settings.github_webhook_secret
     body = await request.body()
 
     if not secret:
-        # Fail closed in production; allow only when explicitly empty AND no signature sent (dev).
-        if x_hub_signature_256:
+        # Fail closed: a missing secret is a misconfiguration, not a dev
+        # environment. This endpoint feeds a pipeline that can push branches.
+        if not settings.dev_mode:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="GITHUB_WEBHOOK_SECRET not configured",
+            )
+        if x_hub_signature_256:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Signed request received but GITHUB_WEBHOOK_SECRET not configured",
             )
         return body
 

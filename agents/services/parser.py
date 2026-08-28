@@ -1,6 +1,8 @@
-"""Parse a GitHub issue body (produced by the Azure Logic App) into structured ErrorPayload.
+"""Parse a GitHub issue body into a structured ErrorPayload.
 
-The Logic App writes a predictable template, for example:
+function-log-monitor writes a predictable template. `### Exception` is the
+exceptions poller; the traces poller uses `### Error` and omits the stack.
+Example:
 
     ### Exception
     System.NullReferenceException
@@ -41,7 +43,6 @@ def _extract_sections(body: str) -> dict[str, str]:
         start = m.end()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
         content = body[start:end].strip()
-        # strip fenced code blocks
         if content.startswith("```"):
             content = re.sub(r"^```[a-zA-Z]*\n?", "", content)
             content = re.sub(r"\n?```$", "", content)
@@ -52,7 +53,7 @@ def _extract_sections(body: str) -> dict[str, str]:
 def parse_issue_body(body: str) -> ErrorPayload:
     sections = _extract_sections(body or "")
     return ErrorPayload(
-        exception_type=sections.get("exception"),
+        exception_type=sections.get("exception") or sections.get("error"),
         message=sections.get("message"),
         stack_trace=sections.get("stack trace"),
         cloud_role=sections.get("cloud role"),

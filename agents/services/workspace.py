@@ -50,7 +50,7 @@ class Workspace:
         self.root = root
         self.path: Path | None = None
 
-    def __enter__(self) -> "Workspace":
+    def __enter__(self) -> Workspace:
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = Path(tempfile.mkdtemp(prefix=f"wf-{uuid.uuid4().hex[:8]}-", dir=str(self.root)))
         return self
@@ -70,6 +70,27 @@ class Workspace:
         )
         if not r.ok:
             raise WorkspaceError(f"clone failed: {r.combined[:500]}")
+
+    def head_sha(self) -> str:
+        """Current HEAD commit of the checkout."""
+        assert self.path is not None
+        r = self._run(["git", "rev-parse", "HEAD"], cwd=self.path)
+        if not r.ok:
+            raise WorkspaceError(f"rev-parse failed: {r.combined[:500]}")
+        return r.stdout.strip()
+
+    def checkout_sha(self, sha: str) -> None:
+        """Pin the checkout to an exact commit.
+
+        A shallow clone may not contain `sha`, so fetch it explicitly first.
+        """
+        assert self.path is not None
+        if self.head_sha() == sha:
+            return
+        self._run(["git", "fetch", "--depth", "1", "origin", sha], cwd=self.path, timeout_s=120)
+        r = self._run(["git", "checkout", "--force", sha], cwd=self.path)
+        if not r.ok:
+            raise WorkspaceError(f"checkout {sha[:10]} failed: {r.combined[:500]}")
 
     def configure_identity(self, name: str, email: str) -> None:
         assert self.path is not None
@@ -126,13 +147,39 @@ class Workspace:
     def read_file(self, rel_path: str, max_bytes: int = 200_000) -> str:
         """Read a file from the checkout (for passing context to the LLM)."""
         assert self.path is not None
-        fp = (self.path / rel_path).resolve()
-        if not str(fp).startswith(str(self.path.resolve())):
-            raise WorkspaceError(f"path escapes workspace: {rel_path}")
+        fp = self._resolve_safe(rel_path)
         if not fp.exists() or not fp.is_file():
             raise WorkspaceError(f"not a file: {rel_path}")
         data = fp.read_bytes()[:max_bytes]
         return data.decode("utf-8", errors="replace")
+
+    def write_file(self, rel_path: str, content: str) -> None:
+        """Overwrite a file inside the workspace. Used by edit-tool agents."""
+        assert self.path is not None
+        fp = self._resolve_safe(rel_path)
+        if not fp.exists():
+            raise WorkspaceError(f"not a file: {rel_path}")
+        fp.write_text(content, encoding="utf-8")
+
+    def git_diff(self) -> str:
+        """Return `git diff` of unstaged changes against HEAD."""
+        assert self.path is not None
+        r = self._run(["git", "diff", "HEAD"], cwd=self.path)
+        if not r.ok:
+            raise WorkspaceError(f"git diff failed: {r.combined[:500]}")
+        return r.stdout
+
+    def _resolve_safe(self, rel_path: str) -> Path:
+        assert self.path is not None
+        if Path(rel_path).is_absolute():
+            raise WorkspaceError(f"absolute paths not allowed: {rel_path}")
+        root = self.path.resolve()
+        fp = (root / rel_path).resolve()
+        # Path containment, not string prefix: `startswith` would accept a
+        # sibling like /tmp/ws-evil for a root of /tmp/ws.
+        if not fp.is_relative_to(root):
+            raise WorkspaceError(f"path escapes workspace: {rel_path}")
+        return fp
 
     # ---------- commands ----------
 
@@ -168,10 +215,14 @@ class Workspace:
             )
             r = RunResult(proc.returncode, proc.stdout or "", proc.stderr or "")
         except subprocess.TimeoutExpired as exc:
+
+            def _decode(v: bytes | str | None) -> str:
+                return v.decode(errors="replace") if isinstance(v, bytes) else (v or "")
+
             r = RunResult(
                 returncode=-1,
-                stdout=(exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")),
-                stderr=(exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")),
+                stdout=_decode(exc.stdout),
+                stderr=_decode(exc.stderr),
                 timed_out=True,
             )
         if check and not r.ok:

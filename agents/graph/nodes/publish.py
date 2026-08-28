@@ -66,7 +66,8 @@ def publish_node(state: TriageState) -> TriageState:
     if result.is_duplicate and result.duplicate_of:
         gh.comment_output_issue(
             result.duplicate_of,
-            f"Another occurrence observed (private #{private_number}, fingerprint `{result.fingerprint}`).",
+            f"Another occurrence observed (private #{private_number}, "
+            f"fingerprint `{result.fingerprint}`).",
         )
         public_url = f"https://github.com/{settings.output_full_repo}/issues/{result.duplicate_of}"
         gh.close_input_issue(

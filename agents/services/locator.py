@@ -46,9 +46,7 @@ def extract_frames(stack_trace: str) -> list[Frame]:
 
         if m := _NET_RE.search(line):
             path = m.group("path").replace("\\", "/")
-            # Best-effort: strip absolute prefix down to a repo-relative-looking tail.
             path = _trim_repo_path(path)
-            # .NET frame also contains the symbol before "in". Extract if present.
             sym_match = re.search(r"at\s+([\w.<>`+]+)", line)
             frames.append(
                 Frame(path, int(m.group("line")), sym_match.group(1) if sym_match else None, line)
@@ -60,8 +58,7 @@ def extract_frames(stack_trace: str) -> list[Frame]:
             continue
 
         if m := _JAVA_RE.search(line):
-            # Java frames only give us the basename; return as-is and let the caller
-            # decide how to resolve (often not resolvable without a class→file map).
+            # Basename only; usually unresolvable without a class->file map.
             frames.append(Frame(m.group("file"), int(m.group("line")), m.group("sym"), line))
             continue
     return frames
@@ -76,13 +73,19 @@ def _trim_repo_path(path: str) -> str:
       /app/src/foo.js                         -> src/foo.js
     """
     p = path.replace("\\", "/")
-    # Common absolute-path prefixes we want to strip, in decreasing specificity.
+
+    # Actions checks out at /work/<repo>/<repo>/. Must precede the generic
+    # "/work/" marker below, which would leave a path that does not exist.
+    m = re.search(r"/work/(?P<repo>[^/]+)/(?P=repo)/", p)
+    if m:
+        return p[m.end() :]
+
     markers = ("/src/", "/app/", "/work/")
     for marker in markers:
         idx = p.find(marker)
         if idx != -1:
             return p[idx + 1 :]  # keep "src/..." not "/src/..."
-    # Otherwise: if absolute, take the last 3 segments as a reasonable approximation.
+    # Absolute but unrecognised: last 3 segments is the best guess.
     if p.startswith("/") or (len(p) > 2 and p[1] == ":"):
         parts = [s for s in p.split("/") if s and not s.endswith(":")]
         return "/".join(parts[-3:]) if len(parts) >= 3 else p

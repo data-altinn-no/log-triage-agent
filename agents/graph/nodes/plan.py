@@ -1,24 +1,25 @@
-"""Plan node: LLM proposes a unified diff for the suspect file."""
+"""Plan node: tool-using agent loop edits the suspect file directly.
+
+The LLM gets read_file/edit_file tools (mirroring Claude Code's FileRead/FileEdit
+semantics). After the loop, we capture `git diff` from the workspace as the patch
+that fix_node will apply. This eliminates the hallucinated-context corruption that
+single-shot diff generation suffered from — the patch is generated from real edits
+to real file contents, so context lines are guaranteed to match.
+"""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from agents.graph.state import TriageState
-from agents.prompts.plan import SYSTEM_PROMPT, USER_TEMPLATE
 from agents.services import github as gh
-from agents.services.llm import get_chat_model
+from agents.services.agent_fix import run_fix_agent
 from agents.services.workspace import Workspace, WorkspaceError
 from shared.config import get_settings
 from shared.logging import get_logger
 from shared.models import ProposedPatch
 
 log = get_logger(__name__)
-
-_FILE_READ_CAP = 120_000  # bytes, to keep prompt bounded
 
 
 def plan_node(state: TriageState) -> TriageState:
@@ -30,47 +31,46 @@ def plan_node(state: TriageState) -> TriageState:
     suspect = outcome.suspect
     payload = state["payload"]
 
-    # Pull the file contents straight from GitHub via a shallow checkout.
-    # (Cheaper than cloning the whole repo just to read one file.)
+    diff: str = ""
+    rationale: str = ""
+    changed_files: list[str] = []
+    base_sha: str | None = None
+
     try:
         with Workspace(Path(settings.autofix_workdir)) as ws:
-            ws.clone(gh.autofix_clone_url(), base_branch=settings.autofix_base_branch, depth=1)
-            try:
-                file_contents = ws.read_file(suspect.file_path, max_bytes=_FILE_READ_CAP)
-            except WorkspaceError as exc:
-                outcome.skipped_reason = f"could not read suspect file: {exc}"
-                log.info("plan.file_read_failed", error=str(exc))
+            ws.clone(
+                gh.autofix_clone_url(),
+                base_branch=settings.autofix_base_branch,
+                depth=50,
+            )
+            # Record the exact commit the agent reasons against, so `fix` can pin
+            # its own checkout to it and the diff is guaranteed to apply.
+            base_sha = ws.head_sha()
+            agent_outcome = run_fix_agent(ws=ws, payload=payload, suspect=suspect)
+            if not agent_outcome.success:
+                outcome.skipped_reason = (
+                    f"agent loop: {agent_outcome.failure_reason or 'no edits'}"
+                )
+                log.info("plan.agent_failed", reason=outcome.skipped_reason)
                 return {"autofix": outcome}
+
+            try:
+                diff = ws.git_diff()
+            except WorkspaceError as exc:
+                outcome.skipped_reason = f"could not capture diff: {exc}"
+                log.warning("plan.diff_capture_failed", error=str(exc))
+                return {"autofix": outcome}
+
+            rationale = agent_outcome.rationale
+            changed_files = agent_outcome.changed_files
     except WorkspaceError as exc:
         outcome.skipped_reason = f"workspace setup failed: {exc}"
         log.warning("plan.workspace_failed", error=str(exc))
         return {"autofix": outcome}
 
-    user_msg = USER_TEMPLATE.format(
-        exception_type=payload.exception_type or "unknown",
-        message=payload.message or "",
-        operation=payload.operation or "",
-        stack_trace=(payload.stack_trace or "")[:4000],
-        file_path=suspect.file_path,
-        line=suspect.line or "?",
-        file_contents=file_contents,
-    )
-
-    llm = get_chat_model(temperature=0.0)
-    resp = llm.invoke([SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_msg)])
-    content = resp.content if isinstance(resp.content, str) else str(resp.content)
-    data = _parse_json_strict(content)
-    if data is None:
-        outcome.skipped_reason = "planner returned non-JSON output"
-        log.warning("plan.invalid_json", raw=content[:500])
-        return {"autofix": outcome}
-
-    diff = (data.get("diff") or "").strip()
-    risk = data.get("risk") or "medium"
-
-    if risk == "high" or not diff:
-        outcome.skipped_reason = f"planner flagged risk={risk}"
-        log.info("plan.rejected", risk=risk, has_diff=bool(diff))
+    if not diff.strip():
+        outcome.skipped_reason = "agent reported success but produced no diff"
+        log.info("plan.empty_diff")
         return {"autofix": outcome}
 
     changed_lines = _count_changed_lines(diff)
@@ -83,29 +83,18 @@ def plan_node(state: TriageState) -> TriageState:
 
     outcome.patch = ProposedPatch(
         diff=diff,
-        rationale=data.get("rationale", ""),
-        risk=risk,
-        changed_files=data.get("changed_files") or [suspect.file_path],
+        rationale=rationale or "agent fix",
+        risk="medium",
+        changed_files=changed_files or [suspect.file_path],
+        base_sha=base_sha,
     )
     log.info(
         "plan.proposed",
-        risk=risk,
         changed_lines=changed_lines,
         files=outcome.patch.changed_files,
+        base_sha=(base_sha or "")[:10],
     )
     return {"autofix": outcome}
-
-
-def _parse_json_strict(text: str) -> dict | None:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
-        cleaned = cleaned.rsplit("```", 1)[0]
-    try:
-        obj = json.loads(cleaned)
-    except json.JSONDecodeError:
-        return None
-    return obj if isinstance(obj, dict) else None
 
 
 def _count_changed_lines(diff: str) -> int:

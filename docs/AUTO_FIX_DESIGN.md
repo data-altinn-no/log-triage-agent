@@ -59,23 +59,37 @@ issue still gets published normally.
 ### `plan`
 
 - **Input:** `SuspectSite` + `ErrorPayload`.
-- **Output:** `ProposedPatch { diff, rationale, risk, changed_files }`.
+- **Output:** `ProposedPatch { diff, rationale, risk, changed_files, base_sha }`.
 
-Shallow-clones the target repo (depth 1) just to read the suspect file,
-then asks the LLM for the smallest unified diff that plausibly fixes the
-error. System prompt (`agents/prompts/plan.py`) is strict:
+Runs a **tool-using edit loop**, not one-shot diff generation
+(`agents/services/agent_fix.py`). The LLM gets three tools — `read_file`,
+`edit_file`, `done` — mirroring Claude Code's FileRead/FileEdit semantics, and
+iterates against a real checkout:
 
-- Output must be JSON only.
-- Diff must use the exact path given in the prompt.
-- Touch the minimum number of lines; prefer guard clauses.
-- No dependency additions, no config/CI/migration changes.
-- Self-rate risk: `low` / `medium` / `high`.
+- `read_file` returns the file line-numbered. Files that exceed the read cap
+  come back as a window centred on the suspect line, always carrying an
+  explicit `TRUNCATED:` note with the total line count and paging instructions.
+  A silent truncation would let the agent edit code it never saw.
+- `edit_file` requires a prior `read_file` on the same path and a **unique**
+  `old_string`, so an edit built on hallucinated context cannot apply.
+- `done` ends the loop with a rationale.
+
+Afterwards `plan` captures `git diff` from the workspace. Because the patch is
+derived from real edits to real file contents, context lines match by
+construction — this is what removed the hallucinated-context corruption that
+single-shot diff generation produced. The commit the agent reasoned against is
+recorded as `base_sha` so `fix` can pin to it.
 
 Rejection gates:
 
-- `risk == "high"` or empty diff → skip.
+- Agent ends without edits, or `done` reports no changed files → skip.
+- Empty captured diff → skip.
 - Diff size > `AUTOFIX_MAX_DIFF_LINES` → skip.
-- Non-JSON output → skip.
+
+**Note:** the LLM self-rated `risk` gate described in earlier revisions no
+longer exists — the edit loop returns no risk field, and `plan` records
+`risk="medium"` unconditionally. Diff size and the human review gate are what
+bound blast radius now. Restoring a real risk signal is a follow-up.
 
 ### `fix`
 
@@ -85,7 +99,9 @@ Rejection gates:
 Owns the full workspace lifecycle in one `with Workspace()` block so no
 non-serializable objects ever cross LangGraph state boundaries:
 
-1. Shallow clone (depth 50), configure bot identity.
+1. Shallow clone (depth 50), **check out `patch.base_sha`**, configure bot
+   identity. Pinning matters: without it a merge landing on the base branch
+   between `plan` and `fix` makes an otherwise-correct patch fail to apply.
 2. Create branch `auto-fix/<fingerprint>-<issue-number>`.
 3. `git apply --index`, fall back to `git apply --3way` for minor drift.
 4. Run `AUTOFIX_TEST_CMD` with a scrubbed environment (only `PATH`, `HOME`,
@@ -141,7 +157,7 @@ All `AUTOFIX_*` settings live in `shared/config.py`:
 | `AUTOFIX_TEST_CMD` | Test command. Must exit 0 for tests to count as passing. |
 | `AUTOFIX_LINT_CMD` | Optional. Failures are non-fatal. |
 | `AUTOFIX_TEST_TIMEOUT_S` | Per-command timeout. |
-| `AUTOFIX_MAX_RETRIES` | Reserved for the replan loop (see below). |
+| `AUTOFIX_MAX_RETRIES` | **Inert.** Reserved for the replan loop; `fix.py` breaks after one test run regardless of this value. |
 | `AUTOFIX_MAX_DIFF_LINES` | Hard cap on proposed diff size. |
 | `AUTOFIX_WORKDIR` | Tmp root for checkouts. |
 | `AUTOFIX_MIN_CONFIDENCE` | Locator confidence threshold. |
@@ -194,6 +210,29 @@ production posture is `AUTOFIX_ENABLED=true` with a scoped target repo.
   the agent cannot bypass branch protection.
 - **Per-day rate limit.** Planned; currently bounded implicitly by the
   30-minute App Insights poll cadence and fingerprint-based deduplication.
+  Treat that bound as weak: in practice a single upstream condition produced
+  thousands of distinct fingerprints, so upstream dedup is not a rate limit.
+
+### Prompt injection is the underlying threat model
+
+Everything above is what makes the pipeline safe against a threat that is
+otherwise structural: **the input is attacker-influenceable**. Anyone who can
+cause a logged exception with a controlled message controls text that reaches
+`agent_fix.py`'s user prompt — and that prompt drives a loop holding file-write
+tools and a path to `git push`.
+
+The controls that matter for this, specifically:
+
+- Tests must pass locally before anything is pushed.
+- The agent can only ever open a PR; humans merge, always.
+- Branch protection and CODEOWNERS are enforced on the target repo.
+- The token is scoped to the allowlisted repo with no admin scope, so the agent
+  cannot bypass branch protection.
+- The test subprocess runs with a scrubbed environment, so the agent's own
+  credentials are not readable by code it just wrote.
+
+None of these are optional hardening. They are the reason an
+attacker-influenceable input is acceptable at all.
 
 ## Non-goals
 
@@ -207,8 +246,13 @@ production posture is `AUTOFIX_ENABLED=true` with a scoped target repo.
 Concrete work items that extend the current implementation:
 
 - **In-loop replan.** On a failing test run, feed the output back to the
-  planner for one bounded retry. `AUTOFIX_MAX_RETRIES` is already wired
-  through; the loop just needs wiring in `fix.py`.
+  planner for one bounded retry. `AUTOFIX_MAX_RETRIES` is plumbed as a setting
+  but has no effect — `fix.py` breaks out of the attempt loop unconditionally.
+- **Restore a risk signal.** The edit-loop rewrite dropped the LLM self-rated
+  risk gate; `risk` is currently hardcoded to `medium`.
+- **Single workspace across `plan` and `fix`.** The two nodes clone the target
+  repo separately. Pinning to `base_sha` makes that correct, but it is still
+  two clones and one avoidable `git apply`.
 - **Containerized test execution** (hardening tier 2 above).
 - **Per-repo, per-day PR cap** enforced in-process.
 - **GitHub App** instead of PAT, with per-repo installation tokens.

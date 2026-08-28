@@ -38,6 +38,14 @@ coverage.xml
 .env.*
 !.env.example
 
+# Raw App Insights exports - unredacted production data, never commit.
+*.csv
+*.tsv
+*.ndjson
+query_data*
+telemetry/
+data/raw/
+
 # IDE
 .vscode/
 .idea/
