@@ -3,9 +3,9 @@
 AI agent that closes the loop from **production error to pull request**. It
 receives errors from Azure (via GitHub issues created by
 [`function-log-monitor`](https://github.com/data-altinn-no/function-log-monitor)),
-triages and deduplicates them with an LLM, opens a polished issue in
-[`data-altinn-no/core`](https://github.com/data-altinn-no/core), and — for
-errors it can localize to a file — drafts a pull request with a proposed fix.
+triages and deduplicates them with an LLM, opens a polished issue in the repo
+that owns the failing code, and, for errors it can localize to a file, drafts a
+pull request with a proposed fix.
 
 ## Architecture
 
@@ -24,15 +24,15 @@ log-triage-agent               (FastAPI + LangGraph, Azure Container Apps)
      1. Verify HMAC
      2. Parse issue body
      3. Fingerprint
-     4. Dedupe against PUBLIC repo
+     4. Resolve owning repo, dedupe against it
      5. LLM enrichment
      6. Auto-fix branch (skipped for duplicates):
           locate (stack-trace → file) → plan (edit loop → diff)
             → fix (clone / apply / test / push / open PR)
-     7. Publish polished issue to PUBLIC repo, linking to the auto-fix PR
+     7. Publish polished issue to the owning repo, linking to the auto-fix PR
      8. Close the private issue, link to public
      ▼
-data-altinn-no/core            (PUBLIC repo — clean, deduped, actionable)
+data-altinn-no/<owning repo>   (PUBLIC: core, proxy or a plugin-* repo)
 ```
 
 **Two safety layers for sensitive data:**
@@ -41,6 +41,24 @@ data-altinn-no/core            (PUBLIC repo — clean, deduped, actionable)
 2. The agent publishes only a high-level summary to the public repo —
    never the raw stack trace. The full (already-redacted) payload stays
    in the private repo as an audit trail.
+
+## Issue routing
+
+Errors arrive from ~20 Azure Functions backed by separate repos, so the target
+is resolved per error rather than configured once:
+
+| Order | Rule | Share of the 13,403-issue census |
+| --- | --- | --- |
+| 1 | A first-party stack frame names its own repo, because Actions checks out at `/work/<repo>/<repo>/` | 6% |
+| 2 | `REPO_ROUTES`, a comma-separated `<cloud role>=<repo>` override | 0% |
+| 3 | Exception map for the six roles the convention gets wrong | 73% |
+| 4 | `func-es<name>-prod-prod` → `plugin-<name>`, accepted only if that repo exists in the org | 22% |
+| 5 | `GITHUB_OUTPUT_REPO` as a fallback | 0% |
+
+A new function that follows the naming convention routes with no configuration.
+One that does not is a `REPO_ROUTES` entry, which is an app setting rather than
+a deploy. The six exceptions are `core`, `proxy`, `plugin-skatteetaten`,
+`plugin-statensvegvesen`, `plugin-patentstyret` and `plugin-digdir`.
 
 ## Tech
 
@@ -158,7 +176,8 @@ log-triage-agent/
 │   │   └── nodes/           parse, fingerprint, dedupe, enrich,
 │   │                        locate, plan, fix, publish
 │   ├── services/
-│   │   ├── github.py        dual-repo (input/output) issue ops
+│   │   ├── github.py        input/output issue ops
+│   │   ├── router.py        resolves the repo that owns the failing code
 │   │   ├── llm.py           chat-model factory (Foundry/Claude or Azure OpenAI)
 │   │   ├── agent_fix.py     read/edit tool loop that produces the patch
 │   │   ├── workspace.py     sandboxed clone / apply / test / push

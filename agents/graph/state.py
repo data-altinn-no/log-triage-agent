@@ -11,4 +11,5 @@ class TriageState(TypedDict, total=False):
     payload: ErrorPayload
     result: TriageResult
     autofix: AutoFixOutcome
+    output_repo: str
     error: str

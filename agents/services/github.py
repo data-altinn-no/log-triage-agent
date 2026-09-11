@@ -19,7 +19,7 @@ FINGERPRINT_MARKER = "<!-- fingerprint:"
 
 
 @lru_cache
-def _client() -> Github:
+def client() -> Github:
     settings = get_settings()
     if not settings.github_token:
         raise RuntimeError("GITHUB_TOKEN is not configured")
@@ -27,11 +27,11 @@ def _client() -> Github:
 
 
 def input_repo() -> Repository:
-    return _client().get_repo(get_settings().input_full_repo)
+    return client().get_repo(get_settings().input_full_repo)
 
 
-def output_repo() -> Repository:
-    return _client().get_repo(get_settings().output_full_repo)
+def output_repo(full_repo: str | None = None) -> Repository:
+    return client().get_repo(full_repo or get_settings().output_full_repo)
 
 
 # ---------- input repo (private landing zone) ----------
@@ -55,30 +55,34 @@ def close_input_issue(number: int, *, link_to_public: str | None, reason: str) -
 
 # ---------- output repo (public published issues) ----------
 
-def find_output_issue_by_fingerprint(fingerprint: str) -> Issue | None:
+def find_output_issue_by_fingerprint(
+    fingerprint: str, full_repo: str | None = None
+) -> Issue | None:
     """Search the OUTPUT repo for an open issue carrying this fingerprint marker."""
-    settings = get_settings()
+    repo = full_repo or get_settings().output_full_repo
     query = (
-        f"repo:{settings.output_full_repo} is:issue is:open "
+        f"repo:{repo} is:issue is:open "
         f'"{FINGERPRINT_MARKER} {fingerprint}"'
     )
-    for issue in _client().search_issues(query=query):
+    for issue in client().search_issues(query=query):
         return issue
     return None
 
 
-def create_output_issue(*, title: str, body: str, labels: list[str]) -> Issue:
-    return output_repo().create_issue(title=title, body=body, labels=labels)
+def create_output_issue(
+    *, title: str, body: str, labels: list[str], full_repo: str | None = None
+) -> Issue:
+    return output_repo(full_repo).create_issue(title=title, body=body, labels=labels)
 
 
-def comment_output_issue(number: int, body: str) -> None:
-    output_repo().get_issue(number=number).create_comment(body)
+def comment_output_issue(number: int, body: str, full_repo: str | None = None) -> None:
+    output_repo(full_repo).get_issue(number=number).create_comment(body)
 
 
 # ---------- auto-fix target repo (code fixes via PR) ----------
 
 def autofix_target_repo() -> Repository:
-    return _client().get_repo(get_settings().autofix_target_full_repo)
+    return client().get_repo(get_settings().autofix_target_full_repo)
 
 
 def autofix_clone_url() -> str:

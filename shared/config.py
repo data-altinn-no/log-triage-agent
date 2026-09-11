@@ -26,7 +26,10 @@ class Settings(BaseSettings):
     github_input_owner: str = "data-altinn-no"
     github_input_repo: str = "log-triage"
     github_output_owner: str = "data-altinn-no"
+    # Fallback only: router.py resolves the owning repo per error.
     github_output_repo: str = "core"
+    # Comma-separated "<cloud role>=<repo>" overrides for router.py.
+    repo_routes: str = ""
     github_webhook_secret: str = ""
     # Comma-separated: the monitor's two pollers label separately, and a
     # single value here silently skips everything the other poller files.
@@ -73,6 +76,15 @@ class Settings(BaseSettings):
     @property
     def input_full_repo(self) -> str:
         return f"{self.github_input_owner}/{self.github_input_repo}"
+
+    @property
+    def repo_route_map(self) -> dict[str, str]:
+        routes = {}
+        for pair in self.repo_routes.split(","):
+            role, _, repo = pair.partition("=")
+            if role.strip() and repo.strip():
+                routes[role.strip()] = repo.strip()
+        return routes
 
     @property
     def output_full_repo(self) -> str:

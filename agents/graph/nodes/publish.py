@@ -1,5 +1,6 @@
 from agents.graph.state import TriageState
 from agents.services import github as gh
+from agents.services.router import resolve_repo
 from shared.config import get_settings
 from shared.logging import get_logger
 
@@ -60,6 +61,7 @@ def publish_node(state: TriageState) -> TriageState:
     result = state["result"]
     private_number = state["issue_number"]
     settings = get_settings()
+    target = state.get("output_repo") or resolve_repo(state["payload"]).full_repo
 
     # Case 1 — duplicate of an existing public issue: comment on the public one,
     # close the private one.
@@ -68,8 +70,9 @@ def publish_node(state: TriageState) -> TriageState:
             result.duplicate_of,
             f"Another occurrence observed (private #{private_number}, "
             f"fingerprint `{result.fingerprint}`).",
+            target,
         )
-        public_url = f"https://github.com/{settings.output_full_repo}/issues/{result.duplicate_of}"
+        public_url = f"https://github.com/{target}/issues/{result.duplicate_of}"
         gh.close_input_issue(
             private_number,
             link_to_public=public_url,
@@ -94,6 +97,7 @@ def publish_node(state: TriageState) -> TriageState:
         title=result.suggested_title or state.get("issue_title", "Production error"),
         body=_render_public_body(state),
         labels=labels,
+        full_repo=target,
     )
 
     gh.close_input_issue(
@@ -108,5 +112,6 @@ def publish_node(state: TriageState) -> TriageState:
         fingerprint=result.fingerprint,
         severity=result.severity,
         category=result.category,
+        repo=target,
     )
     return {}
