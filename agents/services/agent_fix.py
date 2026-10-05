@@ -32,7 +32,7 @@ _WRAPUP_WARNING_TURNS = 3
 _WRAPUP_NOTICE = (
     "You have {left} turn(s) left before this session ends. Stop exploring. "
     "If you have a fix, make the remaining edits now and call done. If you do "
-    "not, call done with rationale 'no confident fix'."
+    "not, call decline with the reason."
 )
 
 _FILE_READ_CAP = 400_000
@@ -47,6 +47,7 @@ _WINDOW_RADIUS = 400
 @dataclass
 class AgentResult:
     success: bool
+    declined: bool = False
     rationale: str = ""
     changed_files: list[str] = field(default_factory=list)
     failure_reason: str | None = None
@@ -55,9 +56,10 @@ class AgentResult:
 class _DoneSignal(Exception):  # noqa: N818 — control-flow signal, not an error
     """Raised internally when the LLM calls the done tool."""
 
-    def __init__(self, rationale: str, changed_files: list[str]):
+    def __init__(self, rationale: str, changed_files: list[str], declined: bool = False):
         self.rationale = rationale
         self.changed_files = changed_files
+        self.declined = declined
 
 
 def render_file_window(
@@ -193,7 +195,17 @@ def run_fix_agent(
                 )
         raise _DoneSignal(rationale=rationale, changed_files=sorted(edited_files))
 
-    tools = [read_file, edit_file, done]
+    @tool
+    def decline(reason: str) -> str:
+        """Finish without a patch: this is not a defect, or no fix is safe.
+
+        Args:
+            reason: 1-3 sentences, e.g. the exception is caught on purpose and turned
+                into a domain error, or the cause is bad upstream data.
+        """
+        raise _DoneSignal(rationale=reason, changed_files=[], declined=True)
+
+    tools = [read_file, edit_file, done, decline]
     tools_by_name = {t.name: t for t in tools}
 
     llm = get_chat_model(temperature=0.0).bind_tools(tools)
@@ -220,9 +232,10 @@ def run_fix_agent(
             log.info("agent_fix.no_tool_calls", iteration=iteration)
             return AgentResult(
                 success=bool(edited_files),
+                declined=not edited_files,
                 rationale=response.text[:1000],
                 changed_files=sorted(edited_files),
-                failure_reason=None if edited_files else "agent ended without edits",
+                failure_reason=None if edited_files else "declined",
             )
 
         signatures.extend(
@@ -251,13 +264,13 @@ def run_fix_agent(
                     iteration=iteration,
                     files=done_sig.changed_files,
                 )
+                declined = done_sig.declined or not done_sig.changed_files
                 return AgentResult(
-                    success=bool(done_sig.changed_files),
+                    success=not declined,
+                    declined=declined,
                     rationale=done_sig.rationale,
-                    changed_files=done_sig.changed_files,
-                    failure_reason=None
-                    if done_sig.changed_files
-                    else "done called without any edits",
+                    changed_files=[] if declined else done_sig.changed_files,
+                    failure_reason="declined" if declined else None,
                 )
             except Exception as exc:  # noqa: BLE001
                 result = f"ERROR: tool execution failed: {exc}"
@@ -278,19 +291,25 @@ def run_fix_agent(
 
 _SYSTEM_PROMPT = """You are a careful code-fix agent.
 
-You have three tools: read_file, edit_file, done.
+You have four tools: read_file, edit_file, done, decline.
 
 Workflow:
 1. read_file the suspect file to see the actual code. Large files come back as a
    window with a `TRUNCATED:` note giving the total line count — if the code you
    need is outside the range shown, call read_file again with start_line/end_line
    before editing. Never edit a region you have not actually read.
-2. Identify the SPECIFIC line(s) responsible for the error described in the user message.
-   The error message and stack trace tell you what failed; the file shows you where.
-3. Use edit_file to make the smallest correct change. Each edit_file call replaces
+2. Decide whether this is a defect in this code at all. It is NOT a defect when the
+   exception is caught on purpose and turned into a deliberate error (a domain
+   exception, an error response, a logged and handled failure), or when the cause is
+   bad upstream data or an outage that the code already handles. Then call decline
+   with the reason and make no edits. Declining is a correct outcome, not a failure.
+3. Otherwise identify the SPECIFIC line(s) responsible for the error described in the
+   user message. The error message and stack trace tell you what failed; the file
+   shows you where.
+4. Use edit_file to make the smallest correct change. Each edit_file call replaces
    one unique snippet — copy `old_string` verbatim from what read_file returned
    (without the line-number prefix).
-4. When the fix is complete, call done with a 1-3 sentence rationale.
+5. When the fix is complete, call done with a 1-3 sentence rationale.
 
 Hard rules:
 - Diagnose root cause. If the error message names an incompatible API call, library command,
@@ -307,8 +326,8 @@ Hard rules:
 - Never put response bodies or other upstream content into log messages or exception
   text; log status codes and identifiers instead. Never use placeholder strings such
   as "TBD". The done tool rejects patches that do either.
-- If you cannot identify a confident fix from the file shown, call done with rationale
-  "no confident fix" and make no edits.
+- If you cannot identify a confident fix, call decline with the reason and make no
+  edits.
 """
 
 

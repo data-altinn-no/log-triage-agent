@@ -57,6 +57,11 @@ def plan_node(state: TriageState) -> TriageState:
             # its own checkout to it and the diff is guaranteed to apply.
             base_sha = ws.head_sha()
             agent_outcome = run_fix_agent(ws=ws, payload=payload, suspect=suspect)
+            if agent_outcome.declined:
+                outcome.declined_reason = agent_outcome.rationale or "no reason given"
+                outcome.skipped_reason = "agent declined to patch"
+                log.info("plan.declined", reason=outcome.declined_reason[:300])
+                return {"autofix": outcome}
             if not agent_outcome.success:
                 outcome.skipped_reason = (
                     f"agent loop: {agent_outcome.failure_reason or 'no edits'}"

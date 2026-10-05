@@ -26,6 +26,13 @@ def _render_public_body(state: TriageState) -> str:
             f"An automated pull request has been opened: {autofix.pr_url}\n"
             f"It is **unreviewed**; merge only after human inspection and CI.\n"
         )
+    elif autofix and autofix.declined_reason:
+        reason = " ".join(autofix.declined_reason.split())[:800]
+        autofix_block = (
+            "\n## Agent assessment\n\n"
+            "The auto-fix agent read the code and did not propose a change:\n\n"
+            f"> {reason}\n"
+        )
     elif autofix and autofix.skipped_reason:
         autofix_block = (
             f"\n## Auto-fix attempt\n\n"

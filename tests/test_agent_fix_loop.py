@@ -162,3 +162,25 @@ def test_a_patch_that_logs_the_response_body_is_sent_back_for_revision(
     sent_back = [str(m.content) for m in fake.seen[3] if type(m).__name__ == "ToolMessage"]
     assert any("patch rejected" in c for c in sent_back)
 
+
+
+def test_decline_is_a_deliberate_outcome_that_keeps_its_reason(monkeypatch, ws, payload, suspect):
+    reason = "The JsonReaderException is caught and rethrown as NsgException on purpose."
+    fake = _FakeLLM([
+        _Resp([_call("read_file", {"path": "Foo.cs"}, 0)]),
+        _Resp([_call("decline", {"reason": reason}, 1)]),
+    ])
+    monkeypatch.setattr(agent_fix, "get_chat_model", lambda **kw: fake)
+
+    result = agent_fix.run_fix_agent(ws=ws, payload=payload, suspect=suspect)
+
+    assert (result.success, result.declined, result.rationale) == (False, True, reason)
+
+
+def test_done_without_edits_counts_as_a_decline(monkeypatch, ws, payload, suspect):
+    fake = _FakeLLM([_Resp([_call("done", {"rationale": "nothing to change"}, 0)])])
+    monkeypatch.setattr(agent_fix, "get_chat_model", lambda **kw: fake)
+
+    result = agent_fix.run_fix_agent(ws=ws, payload=payload, suspect=suspect)
+
+    assert result.declined and result.rationale == "nothing to change"

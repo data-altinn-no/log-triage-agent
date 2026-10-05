@@ -97,6 +97,7 @@ class AutoFixOutcome(BaseModel):
 
     attempted: bool = False
     skipped_reason: str | None = None
+    declined_reason: str | None = None
     suspect: SuspectSite | None = None
     patch: ProposedPatch | None = None
     changed_on_main: list[str] = Field(default_factory=list)
