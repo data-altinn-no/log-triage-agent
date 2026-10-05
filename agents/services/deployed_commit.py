@@ -71,3 +71,45 @@ def resolve(
         where = found or "no method"
         return CommitPick(sha, False, f"line {line} is in {where}, frame says {want}")
     return CommitPick(sha, True, f"line {line} is in {want}")
+
+
+def method_body(source: str, name: str) -> str | None:
+    lines = source.splitlines()
+    for start, text in enumerate(lines):
+        m = _METHOD_DECLARATION.search(text)
+        if not m or m.group(2) != name:
+            continue
+        depth, opened, body = 0, False, []
+        for line in lines[start:]:
+            body.append(line)
+            depth += line.count("{") - line.count("}")
+            opened = opened or "{" in line
+            if opened and depth <= 0:
+                return "\n".join(body)
+    return None
+
+
+def changes_since(
+    repo, *, sha: str, branch: str, file_path: str, symbol: str | None, limit: int = 5,
+) -> list[str]:
+    """Commits on `branch` touching the file since `sha`, when the failing method has changed."""
+    name = frame_method(symbol)
+    if not name:
+        return []
+    try:
+        old = repo.get_contents(file_path, ref=sha).decoded_content.decode("utf-8")
+        new = repo.get_contents(file_path, ref=branch).decoded_content.decode("utf-8")
+        if method_body(old, name) == method_body(new, name):
+            return []
+        since = repo.get_commit(sha).commit.committer.date
+        # Oldest first: the first change after the deployed build is the likeliest fix.
+        commits = [
+            c for c in repo.get_commits(sha=branch, path=file_path, since=since) if c.sha != sha
+        ][::-1]
+    except Exception as exc:  # noqa: BLE001
+        log.info("deployed_commit.changes_lookup_failed", error=str(exc))
+        return []
+    summaries = [f"{c.sha[:7]} {c.commit.message.splitlines()[0]}" for c in commits[:limit]]
+    if len(commits) > limit:
+        summaries.append(f"and {len(commits) - limit} more")
+    return summaries or [f"{name} differs on {branch}"]

@@ -58,8 +58,17 @@ def plan_node(state: TriageState) -> TriageState:
                 verified=pick.verified,
                 reason=pick.reason,
             )
+            branch_head = ws.head_sha()
             if pick.verified and pick.sha:
                 ws.checkout_sha(pick.sha)
+                if pick.sha != branch_head:
+                    outcome.changed_on_main = deployed_commit.changes_since(
+                        gh.autofix_target_repo(),
+                        sha=pick.sha,
+                        branch=settings.autofix_base_branch,
+                        file_path=suspect.file_path,
+                        symbol=suspect.symbol,
+                    )
             # Record the exact commit the agent reasons against, so `fix` can pin
             # its own checkout to it and the diff is guaranteed to apply.
             base_sha = ws.head_sha()
@@ -111,6 +120,12 @@ def plan_node(state: TriageState) -> TriageState:
         changed_files=changed_files or [suspect.file_path],
         base_sha=base_sha,
     )
+    if outcome.changed_on_main:
+        outcome.skipped_reason = (
+            "failing method changed on the base branch after the build that threw; "
+            "check whether it is already fixed: " + "; ".join(outcome.changed_on_main)
+        )
+        log.info("plan.changed_on_main", commits=outcome.changed_on_main)
     log.info(
         "plan.proposed",
         changed_lines=changed_lines,

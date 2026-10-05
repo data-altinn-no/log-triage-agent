@@ -85,6 +85,7 @@ class AutoFixOutcome(BaseModel):
     skipped_reason: str | None = None
     suspect: SuspectSite | None = None
     patch: ProposedPatch | None = None
+    changed_on_main: list[str] = Field(default_factory=list)
     verify: VerifyResult | None = None
     pr_number: int | None = None
     pr_url: str | None = None
