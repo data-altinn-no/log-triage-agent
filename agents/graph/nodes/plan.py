@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.graph.state import TriageState
+from agents.services import deployed_commit
 from agents.services import github as gh
 from agents.services.agent_fix import run_fix_agent
 from agents.services.workspace import Workspace, WorkspaceError
@@ -43,6 +44,22 @@ def plan_node(state: TriageState) -> TriageState:
                 base_branch=settings.autofix_base_branch,
                 depth=50,
             )
+            pick = deployed_commit.resolve(
+                gh.autofix_target_repo(),
+                branch=settings.autofix_base_branch,
+                timestamp=payload.timestamp,
+                file_path=suspect.file_path,
+                line=suspect.line,
+                symbol=suspect.symbol,
+            )
+            log.info(
+                "plan.deployed_commit",
+                sha=(pick.sha or "")[:10],
+                verified=pick.verified,
+                reason=pick.reason,
+            )
+            if pick.verified and pick.sha:
+                ws.checkout_sha(pick.sha)
             # Record the exact commit the agent reasons against, so `fix` can pin
             # its own checkout to it and the diff is guaranteed to apply.
             base_sha = ws.head_sha()
