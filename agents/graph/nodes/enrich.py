@@ -32,7 +32,7 @@ def enrich_node(state: TriageState) -> TriageState:
     response = llm.invoke(
         [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_msg)]
     )
-    content = response.content if isinstance(response.content, str) else str(response.content)
+    content = response.text
 
     try:
         # Strip ```json fences if present

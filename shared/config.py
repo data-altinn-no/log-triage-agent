@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # input: private triage repo the monitor writes to.
     # output: public repo the agent publishes deduped issues to.
     github_token: str = ""
+    github_app_client_id: str = ""
+    github_app_installation_id: int = 0
+    github_app_private_key: str = ""
     github_input_owner: str = "data-altinn-no"
     github_input_repo: str = "log-triage"
     github_output_owner: str = "data-altinn-no"
@@ -76,6 +79,14 @@ class Settings(BaseSettings):
     @property
     def input_full_repo(self) -> str:
         return f"{self.github_input_owner}/{self.github_input_repo}"
+
+    @property
+    def uses_github_app(self) -> bool:
+        return bool(
+            self.github_app_client_id
+            and self.github_app_installation_id
+            and self.github_app_private_key
+        )
 
     @property
     def repo_route_map(self) -> dict[str, str]:

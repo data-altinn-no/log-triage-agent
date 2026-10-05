@@ -176,7 +176,7 @@ log-triage-agent/
 │   │   └── nodes/           parse, fingerprint, dedupe, enrich,
 │   │                        locate, plan, fix, publish
 │   ├── services/
-│   │   ├── github.py        input/output issue ops
+│   │   ├── github.py        input/output issue ops, GitHub App auth
 │   │   ├── router.py        resolves the repo that owns the failing code
 │   │   ├── llm.py           chat-model factory (Foundry/Claude or Azure OpenAI)
 │   │   ├── agent_fix.py     read/edit tool loop that produces the patch

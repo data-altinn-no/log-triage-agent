@@ -209,7 +209,7 @@ def run_fix_agent(
             log.info("agent_fix.no_tool_calls", iteration=iteration)
             return AgentResult(
                 success=bool(edited_files),
-                rationale=str(response.content)[:1000],
+                rationale=response.text[:1000],
                 changed_files=sorted(edited_files),
                 failure_reason=None if edited_files else "agent ended without edits",
             )

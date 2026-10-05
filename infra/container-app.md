@@ -26,9 +26,13 @@ The shape:
 - Azure subscription with permissions to create resource groups, Container Apps,
   Container Registry, Key Vault, and AI Foundry projects.
 - Azure CLI 2.60+ (`az upgrade`).
-- A GitHub App created at the org level, with `contents: write` and
-  `pull_requests: write` on the target repo only.
-  You'll need the App ID, installation ID, and the private-key `.pem` file.
+- The GitHub App `dan-log-triage`, already created at org level:
+  - Client ID `Iv23liiNUwNGaW4WADGG`
+  - Installation ID `157246034`
+  - Private key `key.pem`
+
+  It is installed on `log-triage` only. Add each repo the agent publishes to
+  before pointing the agent at it.
 - An Azure AI Foundry project with a Claude model deployed.
 
 ## 0. Variables
@@ -91,10 +95,8 @@ az keyvault create -g $RG -n $KV -l $LOC --enable-rbac-authorization true
 # Stash secrets — repeat per secret. Replace the literal values.
 az keyvault secret set --vault-name $KV --name foundry-key       --value "<paste-key>"
 az keyvault secret set --vault-name $KV --name webhook-secret    --value "$(openssl rand -hex 32)"
-az keyvault secret set --vault-name $KV --name gh-app-id         --value "<app-id>"
-az keyvault secret set --vault-name $KV --name gh-app-install-id --value "<installation-id>"
-# The PEM goes in as a multi-line secret; quote carefully:
-az keyvault secret set --vault-name $KV --name gh-app-private-key --file ./log-triage-agent.pem
+# The client id and installation id are not secret; they go in as plain env vars.
+az keyvault secret set --vault-name $KV --name gh-app-private-key --file ./key.pem
 ```
 
 ## 5. Create the Container Apps environment
@@ -150,8 +152,6 @@ KV_URI=$(az keyvault show -g $RG -n $KV --query properties.vaultUri -o tsv)
 az containerapp secret set -g $RG -n $APP --secrets \
     foundry-key=keyvaultref:${KV_URI}secrets/foundry-key,identityref:system \
     webhook-secret=keyvaultref:${KV_URI}secrets/webhook-secret,identityref:system \
-    gh-app-id=keyvaultref:${KV_URI}secrets/gh-app-id,identityref:system \
-    gh-app-install-id=keyvaultref:${KV_URI}secrets/gh-app-install-id,identityref:system \
     gh-app-private-key=keyvaultref:${KV_URI}secrets/gh-app-private-key,identityref:system
 ```
 
@@ -167,55 +167,27 @@ az containerapp update -g $RG -n $APP --set-env-vars \
     AZURE_AI_FOUNDRY_MODEL=claude-sonnet-5 \
     AZURE_AI_FOUNDRY_API_KEY=secretref:foundry-key \
     \
-    GITHUB_APP_ID=secretref:gh-app-id \
-    GITHUB_APP_INSTALLATION_ID=secretref:gh-app-install-id \
-    GITHUB_APP_PRIVATE_KEY_PATH=/secrets/gh-app-private-key.pem \
+    GITHUB_APP_CLIENT_ID=Iv23liiNUwNGaW4WADGG \
+    GITHUB_APP_INSTALLATION_ID=157246034 \
+    GITHUB_APP_PRIVATE_KEY=secretref:gh-app-private-key \
     GITHUB_WEBHOOK_SECRET=secretref:webhook-secret \
     \
-    GITHUB_INPUT_OWNER=<your-org> \
+    GITHUB_INPUT_OWNER=data-altinn-no \
     GITHUB_INPUT_REPO=log-triage \
-    GITHUB_OUTPUT_OWNER=<your-org> \
+    GITHUB_OUTPUT_OWNER=data-altinn-no \
     GITHUB_OUTPUT_REPO=core \
     \
-    AUTOFIX_ENABLED=true \
-    AUTOFIX_TARGET_OWNER=<your-org> \
-    AUTOFIX_TARGET_REPO=<repo-to-fix> \
-    AUTOFIX_BASE_BRANCH=main \
-    AUTOFIX_TEST_CMD="dotnet build --nologo" \
-    AUTOFIX_GIT_USER_NAME="log-triage-agent[bot]" \
-    AUTOFIX_GIT_USER_EMAIL="<app-id>+log-triage-agent[bot]@users.noreply.github.com"
+    AUTOFIX_ENABLED=false
 ```
 
-### 6d. Mount the GitHub App private key as a file
+`GITHUB_OUTPUT_REPO` is only a fallback. Issues are routed to the repo that owns
+the failing code, so the App must be installed on those repos. `REPO_ROUTES`
+overrides a route without a redeploy.
 
-The PEM needs to land on disk (not as an env var) so `Auth.AppAuth` can read it.
-Container Apps doesn't natively volume-mount secrets as files, so the simplest
-pattern is to write it from an env var on container start:
-
-Add this to the top of `Dockerfile`'s `CMD` chain. Replace the existing `CMD` line:
-
-```dockerfile
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-CMD ["/entrypoint.sh"]
-```
-
-Create `entrypoint.sh`:
-
-```bash
-#!/bin/sh
-set -e
-if [ -n "${GITHUB_APP_PRIVATE_KEY:-}" ]; then
-  mkdir -p /secrets
-  printf '%s' "$GITHUB_APP_PRIVATE_KEY" > /secrets/gh-app-private-key.pem
-  chmod 600 /secrets/gh-app-private-key.pem
-fi
-exec uvicorn api.main:app --host 0.0.0.0 --port 8081
-```
-
-Then map the secret as `GITHUB_APP_PRIVATE_KEY` (not as a path) in 6c, instead of
-`GITHUB_APP_PRIVATE_KEY_PATH`. Or keep both: write the file from the env var, and
-point `_PATH` at the file the entrypoint wrote.
+`AUTOFIX_ENABLED` stays `false` until the read, triage and publish path has run
+end to end on a real issue. Turning it on additionally needs
+`AUTOFIX_TARGET_OWNER` and `AUTOFIX_TARGET_REPO`, and the App needs
+`contents: write` plus `pull_requests: write` on that repo.
 
 ### 6e. Get the public URL and configure the GitHub App webhook
 
@@ -232,8 +204,8 @@ The webhook secret is the value you stored in Key Vault as `webhook-secret`.
 ### 7a. Health check
 
 ```bash
-curl -i https://$FQDN/healthz
-# expect HTTP 200
+curl -i https://$FQDN/health
+# expect HTTP 200 {"status":"ok"}
 ```
 
 ### 7b. Tail logs

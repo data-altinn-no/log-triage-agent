@@ -18,6 +18,7 @@ class _Resp:
     def __init__(self, tool_calls, content=""):
         self.tool_calls = tool_calls
         self.content = content
+        self.text = content
 
 
 class _FakeLLM:

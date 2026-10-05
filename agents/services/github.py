@@ -4,6 +4,8 @@
 - OUTPUT repo (public): agent creates polished, deduped issues here.
 """
 
+import base64
+import binascii
 from functools import lru_cache
 
 from github import Auth, Github
@@ -18,12 +20,44 @@ log = get_logger(__name__)
 FINGERPRINT_MARKER = "<!-- fingerprint:"
 
 
+def read_private_key(configured: str) -> str:
+    value = configured.strip()
+    if "-----BEGIN" in value:
+        return value
+    try:
+        return base64.b64decode(value, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError) as exc:
+        raise RuntimeError(
+            "GITHUB_APP_PRIVATE_KEY is neither PEM nor base64-encoded PEM"
+        ) from exc
+
+
+@lru_cache
+def _auth() -> Auth.Auth:
+    settings = get_settings()
+    if settings.uses_github_app:
+        app = Auth.AppAuth(
+            settings.github_app_client_id, read_private_key(settings.github_app_private_key)
+        )
+        return Auth.AppInstallationAuth(app, settings.github_app_installation_id)
+    if not settings.github_token:
+        raise RuntimeError(
+            "no GitHub credentials: set GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID "
+            "and GITHUB_APP_PRIVATE_KEY, or GITHUB_TOKEN"
+        )
+    return Auth.Token(settings.github_token)
+
+
 @lru_cache
 def client() -> Github:
-    settings = get_settings()
-    if not settings.github_token:
-        raise RuntimeError("GITHUB_TOKEN is not configured")
-    return Github(auth=Auth.Token(settings.github_token))
+    return Github(auth=_auth())
+
+
+def access_token() -> str:
+    # Reading .token before the client exists raises: PyGithub binds the
+    # requester the installation auth needs when Github() is constructed.
+    client()
+    return _auth().token
 
 
 def input_repo() -> Repository:
@@ -92,7 +126,7 @@ def autofix_clone_url() -> str:
     """
     settings = get_settings()
     return (
-        f"https://x-access-token:{settings.github_token}@github.com/"
+        f"https://x-access-token:{access_token()}@github.com/"
         f"{settings.autofix_target_full_repo}.git"
     )
 
