@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.graph.state import TriageState
-from agents.services import deployed_commit
+from agents.services import deployed_commit, patch_guard
 from agents.services import github as gh
 from agents.services.agent_fix import run_fix_agent
 from agents.services.workspace import Workspace, WorkspaceError
@@ -88,6 +88,12 @@ def plan_node(state: TriageState) -> TriageState:
     if not diff.strip():
         outcome.skipped_reason = "agent reported success but produced no diff"
         log.info("plan.empty_diff")
+        return {"autofix": outcome}
+
+    problems = patch_guard.review(diff)
+    if problems:
+        outcome.skipped_reason = "patch rejected: " + "; ".join(problems)[:500]
+        log.info("plan.patch_rejected", problems=problems)
         return {"autofix": outcome}
 
     changed_lines = _count_changed_lines(diff)

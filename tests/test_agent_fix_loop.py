@@ -131,3 +131,34 @@ def test_edits_survive_hitting_the_cap(monkeypatch, ws, payload, suspect):
     result = agent_fix.run_fix_agent(ws=ws, payload=payload, suspect=suspect)
     assert result.changed_files == ["Foo.cs"]
     assert result.success is True
+
+
+def test_a_patch_that_logs_the_response_body_is_sent_back_for_revision(
+    monkeypatch, tmp_path, payload, suspect
+):
+    import subprocess
+
+    with Workspace(tmp_path / "git") as w:
+        (w.path / "Foo.cs").write_text("var x = 1;\n", encoding="utf-8")
+        for cmd in (["init", "-q"], ["add", "-A"],
+                    ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"]):
+            subprocess.run(["git", *cmd], cwd=w.path, check=True, capture_output=True)
+
+        leak = '_logger.LogWarning("Body: {Body}", content);'
+        fake = _FakeLLM([
+            _Resp([_call("read_file", {"path": "Foo.cs"}, 0)]),
+            _Resp([_call("edit_file", {"path": "Foo.cs", "old_string": "var x = 1;",
+                                       "new_string": leak}, 1)]),
+            _Resp([_call("done", {"rationale": "first try"}, 2)]),
+            _Resp([_call("edit_file", {"path": "Foo.cs", "old_string": leak,
+                                       "new_string": "var x = 2;"}, 3)]),
+            _Resp([_call("done", {"rationale": "revised"}, 4)]),
+        ])
+        monkeypatch.setattr(agent_fix, "get_chat_model", lambda **kw: fake)
+
+        result = agent_fix.run_fix_agent(ws=w, payload=payload, suspect=suspect)
+
+    assert result.success and result.rationale == "revised"
+    sent_back = [str(m.content) for m in fake.seen[3] if type(m).__name__ == "ToolMessage"]
+    assert any("patch rejected" in c for c in sent_back)
+

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.services import patch_guard
 from agents.services.llm import get_chat_model
 from agents.services.workspace import Workspace, WorkspaceError
 from shared.logging import get_logger
@@ -180,6 +181,16 @@ def run_fix_agent(
         Args:
             rationale: 1-3 sentences explaining the change and why it fixes the error.
         """
+        if edited_files:
+            try:
+                problems = patch_guard.review(ws.git_diff())
+            except WorkspaceError:
+                problems = []
+            if problems:
+                return (
+                    "ERROR: patch rejected, revise it and call done again: "
+                    + "; ".join(problems)
+                )
         raise _DoneSignal(rationale=rationale, changed_files=sorted(edited_files))
 
     tools = [read_file, edit_file, done]
@@ -293,6 +304,9 @@ Hard rules:
   replacement API is different, you may need to update related variable usages too —
   do that, don't leave broken code.
 - Do not modify config, CI, package, or migration files. Code changes only.
+- Never put response bodies or other upstream content into log messages or exception
+  text; log status codes and identifiers instead. Never use placeholder strings such
+  as "TBD". The done tool rejects patches that do either.
 - If you cannot identify a confident fix from the file shown, call done with rationale
   "no confident fix" and make no edits.
 """
