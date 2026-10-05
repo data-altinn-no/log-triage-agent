@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from shared.models import AutoFixOutcome, ErrorPayload, TriageResult
+from shared.models import AutoFixOutcome, CodeProvenance, ErrorPayload, TriageResult
 
 
 class TriageState(TypedDict, total=False):
@@ -12,4 +12,5 @@ class TriageState(TypedDict, total=False):
     result: TriageResult
     autofix: AutoFixOutcome
     output_repo: str
+    provenance: CodeProvenance
     error: str

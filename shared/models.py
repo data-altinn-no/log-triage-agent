@@ -78,6 +78,20 @@ class VerifyResult(BaseModel):
     failure_reason: str | None = None
 
 
+class CodeProvenance(BaseModel):
+    """Where the failing frame lives, and whether that code has moved since it threw."""
+
+    repo: str
+    branch: str
+    file_path: str
+    line: int
+    symbol: str | None = None
+    deployed_sha: str | None = None
+    verified: bool = False
+    reason: str = ""
+    changed_on_branch: list[str] = Field(default_factory=list)
+
+
 class AutoFixOutcome(BaseModel):
     """End-state of the auto-fix branch. Attached to TriageState when attempted."""
 

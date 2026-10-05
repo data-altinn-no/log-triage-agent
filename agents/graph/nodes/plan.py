@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.graph.state import TriageState
-from agents.services import deployed_commit, patch_guard
 from agents.services import github as gh
+from agents.services import patch_guard
 from agents.services.agent_fix import run_fix_agent
 from agents.services.workspace import Workspace, WorkspaceError
 from shared.config import get_settings
@@ -44,31 +44,15 @@ def plan_node(state: TriageState) -> TriageState:
                 base_branch=settings.autofix_base_branch,
                 depth=50,
             )
-            pick = deployed_commit.resolve(
-                gh.autofix_target_repo(),
-                branch=settings.autofix_base_branch,
-                timestamp=payload.timestamp,
-                file_path=suspect.file_path,
-                line=suspect.line,
-                symbol=suspect.symbol,
-            )
-            log.info(
-                "plan.deployed_commit",
-                sha=(pick.sha or "")[:10],
-                verified=pick.verified,
-                reason=pick.reason,
-            )
-            branch_head = ws.head_sha()
-            if pick.verified and pick.sha:
-                ws.checkout_sha(pick.sha)
-                if pick.sha != branch_head:
-                    outcome.changed_on_main = deployed_commit.changes_since(
-                        gh.autofix_target_repo(),
-                        sha=pick.sha,
-                        branch=settings.autofix_base_branch,
-                        file_path=suspect.file_path,
-                        symbol=suspect.symbol,
-                    )
+            provenance = state.get("provenance")
+            if (
+                provenance
+                and provenance.verified
+                and provenance.deployed_sha
+                and provenance.repo == settings.autofix_target_full_repo
+            ):
+                ws.checkout_sha(provenance.deployed_sha)
+                outcome.changed_on_main = provenance.changed_on_branch
             # Record the exact commit the agent reasons against, so `fix` can pin
             # its own checkout to it and the diff is guaranteed to apply.
             base_sha = ws.head_sha()

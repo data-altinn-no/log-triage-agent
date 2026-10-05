@@ -9,6 +9,7 @@ from agents.graph.nodes.fix import fix_node
 from agents.graph.nodes.locate import locate_node
 from agents.graph.nodes.parse import parse_node
 from agents.graph.nodes.plan import plan_node
+from agents.graph.nodes.provenance import provenance_node
 from agents.graph.nodes.publish import publish_node
 from agents.graph.state import TriageState
 from shared.config import get_settings
@@ -42,6 +43,7 @@ def _build_graph():
     g.add_node("enrich", enrich_node)
     g.add_node("locate", locate_node)
     g.add_node("plan", plan_node)
+    g.add_node("provenance", provenance_node)
     g.add_node("fix", fix_node)
     g.add_node("publish", publish_node)
 
@@ -49,8 +51,9 @@ def _build_graph():
     g.add_edge("parse", "fingerprint")
     g.add_edge("fingerprint", "dedupe")
     g.add_edge("dedupe", "enrich")
+    g.add_edge("enrich", "provenance")
     g.add_conditional_edges(
-        "enrich",
+        "provenance",
         _route_after_enrich,
         {"publish": "publish", "locate": "locate"},
     )
