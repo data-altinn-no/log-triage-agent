@@ -1,4 +1,8 @@
-from agents.services.fingerprint import compute_fingerprint, normalize_signature
+from agents.services.fingerprint import (
+    compute_fingerprint,
+    normalize_method,
+    normalize_signature,
+)
 
 
 def test_normalize_strips_guids_and_numbers():
@@ -69,3 +73,35 @@ def test_stack_still_wins_over_message_when_present():
     a = compute_fingerprint("E", "at Foo.Bar()", message="wildly different text")
     b = compute_fingerprint("E", "at Foo.Bar()", message="other text entirely")
     assert a == b
+
+
+_BEFORE = (
+    "   at Dan.Core.Helpers.EvidenceSourceHelper+<DoRequest>d__4.MoveNext() in "
+    "/home/runner/work/core/core/Dan.Core/Helpers/EvidenceSourceHelper.cs:line 97\n"
+    "   at System.Runtime.CompilerServices.TaskAwaiter`1.GetResult()\n"
+    "   at Dan.Core.Services.EvidenceHarvesterService+<Harvest>d__9.MoveNext() in "
+    "/home/runner/work/core/core/Dan.Core/Services/EvidenceHarvesterService.cs:line 58"
+)
+_AFTER_REBUILD = (
+    _BEFORE.replace("d__4", "d__5").replace("d__9", "d__8").replace("line 58", "line 56")
+    .replace("   at System.Runtime.CompilerServices.TaskAwaiter`1.GetResult()\n", "")
+)
+
+
+def test_a_rebuild_that_renumbers_async_methods_keeps_the_fingerprint():
+    assert compute_fingerprint("E", _BEFORE) == compute_fingerprint("E", _AFTER_REBUILD)
+
+
+def test_async_state_machine_names_reduce_to_the_source_method():
+    assert normalize_method("Dan.Core.Svc+<Harvest>d__9.MoveNext") == "Dan.Core.Svc.Harvest"
+    assert normalize_method("Dan.Core.Api+<>c__DisplayClass5_0.<Run>b__0") == "Dan.Core.Api.Run"
+
+
+def test_a_method_recurring_from_an_outer_exception_is_counted_once():
+    chained = _BEFORE + "\n   at Dan.Core.Helpers.EvidenceSourceHelper+<DoRequest>d__4.MoveNext()"
+    assert compute_fingerprint("E", chained) == compute_fingerprint("E", _BEFORE)
+
+
+def test_a_different_failing_method_is_a_different_error():
+    other = _BEFORE.replace("<DoRequest>", "<DoOtherRequest>")
+    assert compute_fingerprint("E", other) != compute_fingerprint("E", _BEFORE)
