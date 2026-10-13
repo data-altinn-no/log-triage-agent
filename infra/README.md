@@ -53,7 +53,7 @@ Sign a test payload without a webhook:
 
 ```bash
 python scripts/send_test_webhook.py --payload <issue-body.md>
-python scripts/dry_run.py <issue-body.md>     # parse + locate only, no LLM
+python scripts/trial.py --issues 13418 --out /tmp/trial   # full agent run, all writes refused
 ```
 
 ## Security notes

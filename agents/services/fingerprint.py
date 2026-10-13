@@ -25,7 +25,8 @@ _LOCATION_RE = re.compile(r"in [^\n:]+:\d+", re.IGNORECASE)
 _FRAME_RE = re.compile(
     r"^\s*at (?P<method>[^\s(]+)\([^)]*\)(?: in (?P<file>\S+):line \d+)?", re.MULTILINE
 )
-_FIRST_PARTY = ("Dan.", "Altinn.Dan", "Altinn.ApiClients")
+# Namespaces, as the stack text carries no assembly; Nadobe ships in Dan.Plugin.Brreg.
+FIRST_PARTY_NAMESPACES = ("Dan.", "Altinn.Dan", "Altinn.ApiClients", "Nadobe.")
 _SIGNATURE_FRAMES = 5
 # Mirrors Fingerprint.NormalizeMethod in the monitor.
 _METHOD_RULES = (
@@ -47,7 +48,7 @@ def normalize_method(method: str) -> str:
 def first_party_methods(stack_trace: str | None) -> list[str]:
     methods: list[str] = []
     for m in _FRAME_RE.finditer(stack_trace or ""):
-        if not m.group("method").startswith(_FIRST_PARTY):
+        if not m.group("method").startswith(FIRST_PARTY_NAMESPACES):
             continue
         if (m.group("file") or "").endswith(".g.cs"):
             continue

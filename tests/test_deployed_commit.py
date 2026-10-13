@@ -151,3 +151,8 @@ def test_long_histories_keep_the_oldest_commits():
     newest_first = tuple(f"c{i:06d}" for i in range(8, 0, -1))
     result = _changes(_History(NEW_CHANGED_METHOD, shas=newest_first), limit=3)
     assert result[0].startswith("c000001") and result[-1] == "and 5 more"
+
+
+def test_lambda_frames_name_the_enclosing_method():
+    symbol = "Nadobe.EvidenceSources.ES_BR.UnitBasicInformation+<>c__DisplayClass5_0.<Run>b__0"
+    assert frame_method(symbol) == "Run"

@@ -87,6 +87,12 @@ def close_input_issue(number: int, *, link_to_public: str | None, reason: str) -
     issue.edit(state="closed", state_reason="completed")
 
 
+def hold_input_issue(number: int, *, label: str, comment: str) -> None:
+    issue = get_input_issue(number)
+    issue.create_comment(comment)
+    issue.add_to_labels(label)
+
+
 # ---------- output repo (public published issues) ----------
 
 def find_output_issue_by_fingerprint(

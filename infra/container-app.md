@@ -79,8 +79,7 @@ In the Azure portal:
 4. After deployment, copy:
    - **Endpoint** — looks like `https://<resource>.services.ai.azure.com`
    - **Key** — under "Keys and Endpoint"
-   - **Model name** — e.g. `claude-sonnet-5`, or `claude-opus-5` for the
-     hardest fixes (or whatever deployment name you chose)
+   - **Model name**: `claude-opus-5-5`, or whatever deployment name you chose
 
 > **Important:** the agent needs the endpoint **suffixed with `/anthropic`** to
 > hit the native Messages API. So if Foundry shows
@@ -164,7 +163,7 @@ from Key Vault automatically — no redeploy needed when you rotate.
 az containerapp update -g $RG -n $APP --set-env-vars \
     LLM_PROVIDER=azure_ai_foundry \
     AZURE_AI_FOUNDRY_ENDPOINT="https://<your-foundry>.services.ai.azure.com/anthropic" \
-    AZURE_AI_FOUNDRY_MODEL=claude-sonnet-5 \
+    AZURE_AI_FOUNDRY_MODEL=claude-opus-5-5 \
     AZURE_AI_FOUNDRY_API_KEY=secretref:foundry-key \
     \
     GITHUB_APP_CLIENT_ID=Iv23liiNUwNGaW4WADGG \
@@ -189,15 +188,22 @@ end to end on a real issue. Turning it on additionally needs
 `AUTOFIX_TARGET_OWNER` and `AUTOFIX_TARGET_REPO`, and the App needs
 `contents: write` plus `pull_requests: write` on that repo.
 
-### 6e. Get the public URL and configure the GitHub App webhook
+### 6e. Get the public URL and add the webhook to `log-triage`
 
 ```bash
 FQDN=$(az containerapp show -g $RG -n $APP --query properties.configuration.ingress.fqdn -o tsv)
 echo "Webhook URL: https://$FQDN/webhooks/github"
 ```
 
-Go to the GitHub App settings → **Webhook URL** → paste `https://$FQDN/webhooks/github`.
-The webhook secret is the value you stored in Key Vault as `webhook-secret`.
+Add it as a **repository webhook on `log-triage`** (Settings → Webhooks), not on the
+GitHub App. The App is installed on every repo issues are routed to, so an App
+webhook would deliver events from all of them; the agent ignores those, but there
+is no reason to receive them.
+
+- Payload URL: `https://$FQDN/webhooks/github`
+- Content type: `application/json`
+- Secret: the value stored in Key Vault as `webhook-secret`
+- Events: **Issues** only
 
 ## 7. Verify
 

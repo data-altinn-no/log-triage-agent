@@ -76,7 +76,26 @@ def test_actions_root_rule_requires_the_doubled_repo_name():
     Actions frame in the 13,403-issue census used the doubled form. Asserted
     here so the narrowness is a decision on record, not an accident.
     """
-    stack = "   at X.Y() in /home/runner/work/core/other/Dan.Core/Foo.cs:line 10"
+    stack = "   at Dan.Core.Foo.Y() in /home/runner/work/core/other/Dan.Core/Foo.cs:line 10"
     best = pick_best_frame(extract_frames(stack))
     assert best is not None
     assert best.file_path == "work/core/other/Dan.Core/Foo.cs"
+
+
+_HOST = (
+    "   at Microsoft.Azure.WebJobs.Script.WebHost.WebJobsScriptHostService+<Orphan>d__60"
+    ".MoveNext() in /_/src/WebJobs.Script.WebHost/WebJobsScriptHostService.cs:line 917"
+)
+
+
+def test_functions_host_frames_are_not_application_code():
+    assert pick_best_frame(extract_frames(_HOST)) is None
+
+
+def test_the_first_application_frame_wins_over_host_frames_above_it():
+    app = (
+        "   at Nadobe.EvidenceSources.ES_BR.UnitBasicInformation+<>c__DisplayClass5_0.<Run>b__0() "
+        "in /home/runner/work/plugin-brreg/plugin-brreg/src/UnitBasicInformation.cs:line 65"
+    )
+    best = pick_best_frame(extract_frames(_HOST + "\n" + app))
+    assert best is not None and best.line == 65

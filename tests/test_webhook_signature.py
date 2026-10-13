@@ -5,6 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from api.main import app
+from shared.config import get_settings
 
 client = TestClient(app)
 SECRET = "test-secret"
@@ -14,10 +15,15 @@ def _sign(body: bytes) -> str:
     return "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
 
 
+def _repo() -> dict:
+    return {"full_name": get_settings().input_full_repo}
+
+
 def _payload() -> bytes:
     return json.dumps(
         {
             "action": "opened",
+            "repository": _repo(),
             "issue": {
                 "number": 1,
                 "title": "t",
@@ -54,6 +60,7 @@ def test_accepts_valid_signature_but_skips_without_label(monkeypatch):
     body = json.dumps(
         {
             "action": "opened",
+            "repository": _repo(),
             "issue": {"number": 2, "title": "t", "body": "x", "labels": []},
         }
     ).encode()
@@ -138,3 +145,38 @@ def test_skips_non_issue_event():
     )
     assert resp.status_code == 202
     assert resp.json()["skipped"] is True
+
+
+def _post(body: bytes):
+    return client.post(
+        "/webhooks/github",
+        content=body,
+        headers={
+            "X-GitHub-Event": "issues",
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+
+
+def _labelled(repo: dict) -> bytes:
+    return json.dumps({
+        "action": "opened",
+        "repository": repo,
+        "issue": {"number": 45, "title": "t", "body": "x", "labels": [{"name": "auto-triage"}]},
+    }).encode()
+
+
+def test_an_event_from_another_repo_is_never_processed(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    resp = _post(_labelled({"full_name": "data-altinn-no/plugin-nsg"}))
+    assert resp.json()["skipped"] is True and calls == []
+
+
+def test_a_labelled_issue_in_the_input_repo_is_accepted(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    resp = _post(_labelled(_repo()))
+    assert resp.json() == {"accepted": True, "number": 45}
+    assert calls and calls[0]["issue_number"] == 45

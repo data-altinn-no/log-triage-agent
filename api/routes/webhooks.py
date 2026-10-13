@@ -42,6 +42,12 @@ async def github_webhook(
     if not number:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing issue.number")
 
+    # Issue numbers are per repo; an event from any other repo names a different issue.
+    repo = (payload.get("repository") or {}).get("full_name", "")
+    if repo.lower() != get_settings().input_full_repo.lower():
+        log.info("webhook.other_repo", repo=repo, number=number)
+        return {"skipped": True, "reason": f"repository={repo}"}
+
     if not _should_process(action, labels):
         log.info("webhook.skipped", number=number, action=action, labels=labels)
         return {"skipped": True, "action": action}

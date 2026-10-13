@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # "azure_openai" or "azure_ai_foundry" (Claude via the Messages API).
-    llm_provider: str = "azure_openai"
+    llm_provider: str = "azure_ai_foundry"
 
     azure_openai_api_key: str = ""
     azure_openai_endpoint: str = ""
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Endpoint must end in /anthropic - that suffix routes to the Messages API.
     azure_ai_foundry_endpoint: str = ""
     azure_ai_foundry_api_key: str = ""
-    azure_ai_foundry_model: str = "claude-sonnet-5"
+    azure_ai_foundry_model: str = "claude-opus-5-5"
 
     # input: private triage repo the monitor writes to.
     # output: public repo the agent publishes deduped issues to.
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # single value here silently skips everything the other poller files.
     triage_label: str = "auto-triage-errors,auto-triage-exceptions,auto-triage"
     published_label: str = "auto-published"
+    publish_failed_label: str = "publish-failed"
 
     # Also accepts LANGFUSE_BASE_URL; extra="ignore" would silently drop it.
     langfuse_enabled: bool = False

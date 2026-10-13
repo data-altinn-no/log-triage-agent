@@ -6,11 +6,11 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
+from agents.services.fingerprint import normalize_method
 from shared.logging import get_logger
 
 log = get_logger(__name__)
 
-_ASYNC_STATE_MACHINE = re.compile(r"<(\w+)>d__")
 _METHOD_DECLARATION = re.compile(
     r"(public|private|internal|protected)[^=;]*?\b(\w+)\s*(<[^>]*>)?\s*\("
 )
@@ -26,12 +26,10 @@ class CommitPick:
 def frame_method(symbol: str | None) -> str | None:
     if not symbol:
         return None
-    if m := _ASYNC_STATE_MACHINE.search(symbol):
-        return m.group(1)
     name = symbol.split("(")[0]
     if name.endswith("..ctor"):
         return name[: -len("..ctor")].split(".")[-1]
-    return name.split(".")[-1] or None
+    return normalize_method(name).split(".")[-1] or None
 
 
 def enclosing_method(source: str, line: int) -> str | None:

@@ -65,8 +65,7 @@ a deploy. The six exceptions are `core`, `proxy`, `plugin-skatteetaten`,
 - Python 3.11+, FastAPI, LangGraph, LangChain
 - Two LLM providers, selected by `LLM_PROVIDER`:
   - `azure_ai_foundry` — Anthropic Claude via the Messages API on Azure AI
-    Foundry (`claude-sonnet-5` by default; `claude-opus-5` for the hardest
-    fixes). This is the maintained path.
+    Foundry (`claude-opus-5-5` by default). This is the maintained path.
   - `azure_openai` — Azure-hosted OpenAI. Its deployment and API version
     predate the current surface; review before relying on it.
 - PyGithub for GitHub API

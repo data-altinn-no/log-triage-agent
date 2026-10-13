@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from agents.services.fingerprint import FIRST_PARTY_NAMESPACES
+
 _PY_RE = re.compile(r'File "(?P<path>[^"]+?\.py)", line (?P<line>\d+)(?:, in (?P<sym>\S+))?')
 _NET_RE = re.compile(r"in (?P<path>\S+?\.(?:cs|fs|vb)):line (?P<line>\d+)", re.IGNORECASE)
 _NODE_RE = re.compile(r"\((?P<path>[^\s()]+?\.(?:js|ts|mjs|cjs)):(?P<line>\d+):\d+\)")
@@ -93,7 +95,7 @@ def _trim_repo_path(path: str) -> str:
 
 
 def pick_best_frame(frames: list[Frame]) -> Frame | None:
-    """Pick the topmost application frame, skipping obvious framework frames."""
+    """Topmost application frame; None when every frame is framework or host code."""
     frameworky = (
         "/site-packages/",
         "/node_modules/",
@@ -103,6 +105,10 @@ def pick_best_frame(frames: list[Frame]) -> Frame | None:
         "/runtime/",
     )
     for f in frames:
-        if not any(marker in f.file_path for marker in frameworky):
-            return f
-    return frames[0] if frames else None
+        if any(marker in f.file_path for marker in frameworky):
+            continue
+        # .NET paths do not reveal a host or library; the namespace does.
+        if f.file_path.endswith(".cs") and not (f.symbol or "").startswith(FIRST_PARTY_NAMESPACES):
+            continue
+        return f
+    return None

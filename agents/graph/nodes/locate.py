@@ -27,7 +27,10 @@ def locate_node(state: TriageState) -> TriageState:
     frames = extract_frames(payload.stack_trace or "")
     best = pick_best_frame(frames)
     if best is None:
-        outcome.skipped_reason = "no parseable frame in stack trace"
+        outcome.skipped_reason = (
+            "no frame in application code; the failure is in framework or host code"
+            if frames else "no parseable frame in stack trace"
+        )
         log.info("locate.no_frame")
         return {"autofix": outcome}
 

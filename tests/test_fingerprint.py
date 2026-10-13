@@ -105,3 +105,12 @@ def test_a_method_recurring_from_an_outer_exception_is_counted_once():
 def test_a_different_failing_method_is_a_different_error():
     other = _BEFORE.replace("<DoRequest>", "<DoOtherRequest>")
     assert compute_fingerprint("E", other) != compute_fingerprint("E", _BEFORE)
+
+
+def test_nadobe_frames_from_dan_plugin_brreg_are_first_party():
+    stack = (
+        "   at Nadobe.EvidenceSources.ES_BR.UnitBasicInformation+<>c__DisplayClass5_0.<Run>b__0() "
+        "in /src/UnitBasicInformation.cs:line 65"
+    )
+    renamed = stack.replace("DisplayClass5_0", "DisplayClass6_0").replace("line 65", "line 70")
+    assert compute_fingerprint("E", stack) == compute_fingerprint("E", renamed)

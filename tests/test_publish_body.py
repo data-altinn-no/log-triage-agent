@@ -1,3 +1,7 @@
+import pytest
+from github import GithubException
+
+from agents.graph.nodes import publish
 from agents.graph.nodes.publish import _render_public_body
 from shared.models import AutoFixOutcome, ErrorPayload, TriageResult
 
@@ -23,3 +27,47 @@ def test_a_declined_fix_publishes_the_agents_reasoning():
 def test_a_plain_skip_still_reads_as_skipped():
     body = _body(AutoFixOutcome(attempted=True, skipped_reason="no parseable frame"))
     assert "Agent assessment" not in body and "no parseable frame" in body
+
+
+
+class _GitHub:
+    def __init__(self, status):
+        self.status, self.held, self.closed = status, [], []
+
+    def create_output_issue(self, **kwargs):
+        raise GithubException(self.status, {"message": "Not Found"}, None)
+
+    def hold_input_issue(self, number, *, label, comment):
+        self.held.append((number, label, comment))
+
+    def close_input_issue(self, number, **kwargs):
+        self.closed.append(number)
+
+    render_fingerprint_marker = staticmethod(lambda fp: f"<!-- fingerprint: {fp} -->")
+
+
+def _publish(monkeypatch, status):
+    fake = _GitHub(status)
+    monkeypatch.setattr(publish, "gh", fake)
+    state = {
+        "issue_number": 42,
+        "payload": ErrorPayload(),
+        "result": TriageResult(fingerprint="f", suggested_title="t", summary="s"),
+        "output_repo": "data-altinn-no/plugin-x",
+    }
+    publish.publish_node(state)
+    return fake
+
+
+@pytest.mark.parametrize("status", [403, 404, 410])
+def test_a_repo_that_refuses_the_issue_keeps_it_open_in_triage(monkeypatch, status):
+    fake = _publish(monkeypatch, status)
+    assert fake.closed == []
+    number, label, comment = fake.held[0]
+    assert (number, label) == (42, "publish-failed")
+    assert "plugin-x" in comment and "## Summary" in comment
+
+
+def test_other_github_errors_still_fail_loudly(monkeypatch):
+    with pytest.raises(GithubException):
+        _publish(monkeypatch, 500)

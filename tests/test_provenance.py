@@ -6,7 +6,7 @@ from agents.services.deployed_commit import CommitPick
 from shared.models import CodeProvenance, ErrorPayload, TriageResult
 
 STACK = (
-    "   at Ns.MatrikkelStoreClientService+<GetVeg>d__7.MoveNext() in "
+    "   at Dan.Plugin.Kartverket.MatrikkelStoreClientService+<GetVeg>d__7.MoveNext() in "
     "/home/runner/work/plugin-kartverket/plugin-kartverket/src/Svc.cs:line 143"
 )
 
@@ -87,3 +87,12 @@ def test_published_issue_has_no_history_section_when_nothing_moved():
     assert "Code history" not in _published(CodeProvenance(
         repo="r", branch="main", file_path="src/Svc.cs", line=143))
     assert "Code history" not in _published()
+
+
+def test_framework_only_stacks_say_so_instead_of_guessing():
+    from agents.graph.nodes.locate import locate_node
+    host = ("   at Microsoft.Azure.WebJobs.Script.WebHost.WebJobsScriptHostService.Orphan() "
+            "in /_/src/WebJobs.Script.WebHost/WebJobsScriptHostService.cs:line 917")
+    outcome = locate_node(_state(payload=ErrorPayload(stack_trace=host)))["autofix"]
+    assert outcome.suspect is None
+    assert "framework or host code" in outcome.skipped_reason
