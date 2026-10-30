@@ -68,8 +68,9 @@ jobs:
         run: |
           app=(-g "$RESOURCE_GROUP" -n "$CONTAINER_APP")
           for _ in $(seq 1 30); do
-            read -r latest ready fqdn < <(az containerapp show "${app[@]}" --query \
-              "[properties.latestRevisionName, properties.latestReadyRevisionName, properties.configuration.ingress.fqdn]" -o tsv | tr '\n' ' ')
+            out=$(az containerapp show "${app[@]}" --query \
+              "[properties.latestRevisionName, properties.latestReadyRevisionName, properties.configuration.ingress.fqdn]" -o tsv)
+            { read -r latest; read -r ready; read -r fqdn; } <<< "$out"
             if [ "$latest" = "$ready" ] && curl -fsS "https://$fqdn/health"; then
               echo; echo "$latest is serving"; exit 0
             fi
