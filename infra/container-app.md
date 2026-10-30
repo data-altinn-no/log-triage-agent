@@ -255,18 +255,17 @@ Watch the logs for `webhook.accepted` → `locate.picked` → `agent_fix.tool` �
 
 `.github/workflows/ci.yml` runs ruff and the tests on every pull request and push.
 On a push to `main` it also builds the image, tags it with the commit SHA, deploys
-it, and waits for the new revision to answer `/health`. One-time setup:
+it, and waits for the new revision to answer `/health`. The registry, resource group
+and app names are set in the workflow's `env` block.
+
+It logs in as the identity the portal created when continuous deployment was
+enabled, through the `CONTAINERAPPLOGTRIAGEAGENT_AZURE_*` repository secrets. That
+identity needs a federated credential for
+`repo:data-altinn-no/log-triage-agent:ref:refs/heads/main` (the portal adds it) and
+these roles:
 
 ```bash
-GH_REPO=data-altinn-no/log-triage-agent
-SP_ID=$(az ad app create --display-name log-triage-agent-ci --query appId -o tsv)
-az ad sp create --id $SP_ID
-az ad app federated-credential create --id $SP_ID --parameters '{
-  "name": "main",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:'$GH_REPO':ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
+SP_ID=<the identity's client id>
 az role assignment create --assignee $SP_ID --role AcrPush \
   --scope $(az acr show -n $ACR --query id -o tsv)
 az role assignment create --assignee $SP_ID --role "Container Apps Contributor" \
@@ -274,13 +273,6 @@ az role assignment create --assignee $SP_ID --role "Container Apps Contributor" 
 # az looks up the registry and the app's environment before it pushes or deploys.
 az role assignment create --assignee $SP_ID --role Reader \
   --scope $(az group show -n $RG --query id -o tsv)
-
-gh secret set AZURE_CLIENT_ID       -R $GH_REPO -b $SP_ID
-gh secret set AZURE_TENANT_ID       -R $GH_REPO -b $(az account show --query tenantId -o tsv)
-gh secret set AZURE_SUBSCRIPTION_ID -R $GH_REPO -b $(az account show --query id -o tsv)
-gh variable set ACR_NAME       -R $GH_REPO -b $ACR
-gh variable set RESOURCE_GROUP -R $GH_REPO -b $RG
-gh variable set CONTAINER_APP  -R $GH_REPO -b $APP
 ```
 
 The federated credential only trusts runs on `main`, so a pull request, including

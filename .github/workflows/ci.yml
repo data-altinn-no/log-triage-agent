@@ -37,30 +37,36 @@ jobs:
       group: deploy
       cancel-in-progress: false
     env:
-      IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/log-triage-agent:${{ github.sha }}
+      REGISTRY: containerregnadobe-bmg4dvcsf6h3edb0.azurecr.io
+      RESOURCE_GROUP: rg-nadobe-ops
+      CONTAINER_APP: containerapp-log-triage-agent
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The identity the portal created when continuous deployment was set up.
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.CONTAINERAPPLOGTRIAGEAGENT_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.CONTAINERAPPLOGTRIAGEAGENT_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONTAINERAPPLOGTRIAGEAGENT_AZURE_SUBSCRIPTION_ID }}
 
       - name: Build and push image
         run: |
-          az acr login -n "${{ vars.ACR_NAME }}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
+          image="$REGISTRY/log-triage-agent:${{ github.sha }}"
+          # The login server carries a hash suffix, so the registry name has to be looked up.
+          name=$(az acr list -g "$RESOURCE_GROUP" --query "[?loginServer=='$REGISTRY'].name" -o tsv)
+          az acr login -n "$name"
+          docker build -t "$image" .
+          docker push "$image"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Deploy
         run: |
-          az containerapp update -g "${{ vars.RESOURCE_GROUP }}" -n "${{ vars.CONTAINER_APP }}" \
-            --image "$IMAGE" --output none
+          az containerapp update -g "$RESOURCE_GROUP" -n "$CONTAINER_APP" --image "$IMAGE" --output none
 
       - name: Wait for the new revision
         run: |
-          app=(-g "${{ vars.RESOURCE_GROUP }}" -n "${{ vars.CONTAINER_APP }}")
+          app=(-g "$RESOURCE_GROUP" -n "$CONTAINER_APP")
           for _ in $(seq 1 30); do
             read -r latest ready fqdn < <(az containerapp show "${app[@]}" --query \
               "[properties.latestRevisionName, properties.latestReadyRevisionName, properties.configuration.ingress.fqdn]" -o tsv | tr '\n' ' ')
