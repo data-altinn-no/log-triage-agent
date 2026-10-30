@@ -104,15 +104,17 @@ non-serializable objects ever cross LangGraph state boundaries:
    between `plan` and `fix` makes an otherwise-correct patch fail to apply.
 2. Create branch `auto-fix/<fingerprint>-<issue-number>`.
 3. `git apply --index`, fall back to `git apply --3way` for minor drift.
-4. Run `AUTOFIX_TEST_CMD` with a scrubbed environment (only `PATH`, `HOME`,
-   `LANG`, `LC_ALL`, `PWD`, `USER`, `SHELL`, `TMPDIR` survive).
-5. Optional `AUTOFIX_LINT_CMD` — non-fatal, output attached to PR body.
-6. Commit, push branch via `x-access-token` URL, open PR with labels
+4. Commit and push the branch via `x-access-token` URL.
+5. Send a `verify-fix` repository dispatch to `log-triage`, whose workflow
+   checks the branch out on a GitHub runner and runs `dotnet restore`, `build`
+   and `test`, the same steps the shared deploy flow runs. The agent finds the
+   run by its title and waits up to `AUTOFIX_VERIFY_TIMEOUT_S`.
+6. On a green run, open a **draft** PR linked to the run, with labels
    `auto-fix`, `needs-review`, `severity:<x>`.
 
-Tests must pass **locally** before any push. A failing test run closes the
-branch without pushing and falls through to `publish`, which still documents
-the error.
+A red, unfinished or missing run deletes the branch and falls through to
+`publish`, which still documents the error. Repo code never runs in the
+agent's container.
 
 ### `publish`
 
@@ -152,12 +154,9 @@ All `AUTOFIX_*` settings live in `shared/config.py`:
 | Setting | Purpose |
 | --- | --- |
 | `AUTOFIX_ENABLED` | Runtime kill-switch. Flip to `false` to suspend PR creation during incidents without redeploying. |
-| `AUTOFIX_TARGET_OWNER` / `AUTOFIX_TARGET_REPO` | Repo the agent writes PRs to. |
-| `AUTOFIX_BASE_BRANCH` | Default `main`. |
-| `AUTOFIX_TEST_CMD` | Test command. Must exit 0 for tests to count as passing. |
-| `AUTOFIX_LINT_CMD` | Optional. Failures are non-fatal. |
-| `AUTOFIX_TEST_TIMEOUT_S` | Per-command timeout. |
-| `AUTOFIX_MAX_RETRIES` | **Inert.** Reserved for the replan loop; `fix.py` breaks after one test run regardless of this value. |
+| `AUTOFIX_REPOS` | Comma-separated routed repos fixes may be proposed in. PRs target each repo's default branch. |
+| `AUTOFIX_VERIFY_EVENT` / `AUTOFIX_VERIFY_WORKFLOW` | The dispatch event and workflow file in `log-triage` that build and test the branch. |
+| `AUTOFIX_VERIFY_TIMEOUT_S` | How long to wait for the verify run. |
 | `AUTOFIX_MAX_DIFF_LINES` | Hard cap on proposed diff size. |
 | `AUTOFIX_WORKDIR` | Tmp root for checkouts. |
 | `AUTOFIX_MIN_CONFIDENCE` | Locator confidence threshold. |
@@ -173,7 +172,7 @@ All `AUTOFIX_*` settings live in `shared/config.py`:
 | LLM self-rates risk as `high` | Publish issue only |
 | Diff exceeds line cap | Publish issue only |
 | `git apply` fails (even with `--3way`) | Publish issue only |
-| Tests fail | Publish issue only; no push |
+| CI run fails, times out or never starts | Publish issue only; branch deleted |
 | Push fails (auth, protected branch) | Publish issue only |
 | PR creation fails | Publish issue only |
 
@@ -186,7 +185,7 @@ The implementation is complete. Rollout is scoped by which target repos
 the agent is allowed to open PRs against. This is a deliberately narrow
 allowlist, expanded as evidence accumulates.
 
-1. **Stage A — single allowlisted repo.** `AUTOFIX_TARGET_REPO` points at
+1. **Stage A — single allowlisted repo.** `AUTOFIX_REPOS` names
    one low-risk service. All `auto-fix` PRs reviewed by the service's
    CODEOWNERS. Metric of interest: merge rate and time-to-close.
 2. **Stage B — broadened allowlist.** Add further repos once Stage A

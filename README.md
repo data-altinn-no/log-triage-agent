@@ -122,18 +122,21 @@ Non-duplicate errors flow through `locate → plan → fix` after enrichment:
   against real file contents, context lines match by construction. The diff is
   size-capped.
 - **`fix`** clones into a sandbox workspace, checks out the exact commit `plan`
-  worked against, applies the diff, runs the configured test command with a
-  scrubbed environment, commits, pushes a branch, and opens a PR that
-  references the triage issue.
+  worked against, applies the diff, commits and pushes an `auto-fix/` branch,
+  then has the `verify-fix` workflow in `log-triage` build and test it on a
+  GitHub runner. Only a green run opens a draft PR, linked to that run; a red
+  one deletes the branch.
 
-Tests must pass locally before anything is pushed, and the agent can only ever
-open a PR — humans merge. That matters because the input is
+Repo code is never built inside the agent's container, which holds its keys,
+and the agent can only ever open a draft PR — humans merge. That matters because the input is
 attacker-influenceable: anyone who can trigger a logged exception with a
 controlled message controls text that reaches the fix agent's prompt. See the
 threat model in [`docs/AUTO_FIX_DESIGN.md`](docs/AUTO_FIX_DESIGN.md).
 
-Configuration: set `AUTOFIX_TARGET_REPO` (and `AUTOFIX_TEST_CMD` if not
-`pytest -q`), then `AUTOFIX_ENABLED=true`. Per-issue override: apply the
+Configuration: list the repos in `AUTOFIX_REPOS` (e.g. `plugin-kartverket`),
+then `AUTOFIX_ENABLED=true`. The App needs Contents and Pull requests write on
+those repos, and Contents write plus Actions read on `log-triage` to start and
+follow the verify run. Per-issue override: apply the
 `no-auto-fix` label to the input issue. Operator override: flip
 `AUTOFIX_ENABLED` to `false` at runtime to suspend PR creation during an
 incident without redeploying.

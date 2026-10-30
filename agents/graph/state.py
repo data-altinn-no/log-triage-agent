@@ -12,5 +12,6 @@ class TriageState(TypedDict, total=False):
     result: TriageResult
     autofix: AutoFixOutcome
     output_repo: str
+    autofix_base_branch: str
     provenance: CodeProvenance
     error: str

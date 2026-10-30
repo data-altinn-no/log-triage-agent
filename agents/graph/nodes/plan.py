@@ -37,19 +37,23 @@ def plan_node(state: TriageState) -> TriageState:
     changed_files: list[str] = []
     base_sha: str | None = None
 
+    target = state["output_repo"]
+    try:
+        base_branch = gh.default_branch(target)
+    except Exception as exc:  # noqa: BLE001
+        outcome.skipped_reason = f"could not read {target}: {exc}"
+        log.warning("plan.repo_unreadable", repo=target, error=str(exc))
+        return {"autofix": outcome}
+
     try:
         with Workspace(Path(settings.autofix_workdir)) as ws:
-            ws.clone(
-                gh.autofix_clone_url(),
-                base_branch=settings.autofix_base_branch,
-                depth=50,
-            )
+            ws.clone(gh.autofix_clone_url(target), base_branch=base_branch, depth=50)
             provenance = state.get("provenance")
             if (
                 provenance
                 and provenance.verified
                 and provenance.deployed_sha
-                and provenance.repo == settings.autofix_target_full_repo
+                and provenance.repo == target
             ):
                 ws.checkout_sha(provenance.deployed_sha)
                 outcome.changed_on_main = provenance.changed_on_branch
@@ -121,7 +125,7 @@ def plan_node(state: TriageState) -> TriageState:
         files=outcome.patch.changed_files,
         base_sha=(base_sha or "")[:10],
     )
-    return {"autofix": outcome}
+    return {"autofix": outcome, "autofix_base_branch": base_branch}
 
 
 def _count_changed_lines(diff: str) -> int:

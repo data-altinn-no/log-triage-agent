@@ -64,7 +64,6 @@ def _run(args: tuple[list[dict], Path, int]) -> list[dict]:
     from agents.graph.state import TriageState
     from agents.services import github as gh
     from agents.services.patch_guard import review
-    from agents.services.router import resolve_repo
     from shared.config import get_settings
 
     settings = get_settings()
@@ -85,10 +84,6 @@ def _run(args: tuple[list[dict], Path, int]) -> list[dict]:
         try:
             for node in (parse_node, fingerprint_node, dedupe_node, enrich_node):
                 state.update(node(state))
-            route = resolve_repo(state["payload"])
-            owner, name = route.full_repo.split("/", 1)
-            settings.autofix_target_owner, settings.autofix_target_repo = owner, name
-            settings.autofix_base_branch = gh.client().get_repo(route.full_repo).default_branch
             for node in (provenance_node, locate_node, plan_node):
                 state.update(node(state))
         except Exception as exc:  # noqa: BLE001

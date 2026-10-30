@@ -119,42 +119,51 @@ def comment_output_issue(number: int, body: str, full_repo: str | None = None) -
     output_repo(full_repo).get_issue(number=number).create_comment(body)
 
 
-# ---------- auto-fix target repo (code fixes via PR) ----------
+# ---------- auto-fix (code fixes via draft PR) ----------
 
-def autofix_target_repo() -> Repository:
-    return client().get_repo(get_settings().autofix_target_full_repo)
+def default_branch(full_repo: str) -> str:
+    return client().get_repo(full_repo).default_branch
 
 
-def autofix_clone_url() -> str:
-    """HTTPS clone URL with the agent's token baked in for push auth.
+def autofix_clone_url(full_repo: str) -> str:
+    """HTTPS clone URL with the agent's token baked in for push auth. Never log it."""
+    return f"https://x-access-token:{access_token()}@github.com/{full_repo}.git"
 
-    Keep this server-side only; never log the result.
-    """
+
+def dispatch_verify(*, full_repo: str, branch: str, request_id: str) -> None:
+    """Ask the input repo's verify workflow to build and test `branch` of `full_repo`."""
     settings = get_settings()
-    return (
-        f"https://x-access-token:{access_token()}@github.com/"
-        f"{settings.autofix_target_full_repo}.git"
+    input_repo().create_repository_dispatch(
+        settings.autofix_verify_event,
+        {"repo": full_repo, "ref": branch, "request_id": request_id},
     )
+
+
+def find_verify_run(request_id: str):
+    """The verify run whose title carries `request_id`, or None until it has started."""
+    workflow = input_repo().get_workflow(get_settings().autofix_verify_workflow)
+    for run in workflow.get_runs(event="repository_dispatch").get_page(0):
+        if run.display_title == f"verify {request_id}":
+            return run
+    return None
+
+
+def delete_branch(full_repo: str, branch: str) -> None:
+    client().get_repo(full_repo).get_git_ref(f"heads/{branch}").delete()
 
 
 def open_autofix_pr(
     *,
+    full_repo: str,
+    base: str,
     branch: str,
     title: str,
     body: str,
     labels: list[str],
-    draft: bool = False,
 ):
-    """Open a PR against autofix_target.autofix_base_branch. Returns PyGithub PR."""
-    settings = get_settings()
-    repo = autofix_target_repo()
-    pr = repo.create_pull(
-        title=title,
-        body=body,
-        head=branch,
-        base=settings.autofix_base_branch,
-        draft=draft,
-    )
+    """Open a draft PR from `branch` into `base`. Returns the PyGithub PR."""
+    repo = client().get_repo(full_repo)
+    pr = repo.create_pull(title=title, body=body, head=branch, base=base, draft=True)
     if labels:
         try:
             repo.get_issue(pr.number).add_to_labels(*labels)

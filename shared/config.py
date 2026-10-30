@@ -55,16 +55,13 @@ class Settings(BaseSettings):
     # Only this flag lets an unsigned webhook through - never a missing secret.
     dev_mode: bool = False
 
-    # autofix_target_* is the code repo fixes land in; separate from the
-    # issue-only output repo. autofix_enabled is a runtime kill-switch.
+    # autofix_enabled is a runtime kill-switch; autofix_repos lists the routed
+    # repos fixes may be proposed in, as names under github_output_owner.
     autofix_enabled: bool = False
-    autofix_target_owner: str = ""
-    autofix_target_repo: str = ""
-    autofix_base_branch: str = "main"
-    autofix_test_cmd: str = "pytest -q"
-    autofix_lint_cmd: str = ""  # optional, e.g. "ruff check ."
-    autofix_test_timeout_s: int = 300
-    autofix_max_retries: int = 1
+    autofix_repos: str = ""
+    autofix_verify_event: str = "verify-fix"
+    autofix_verify_workflow: str = "verify-fix.yml"
+    autofix_verify_timeout_s: int = 1200
     autofix_max_diff_lines: int = 200
     autofix_workdir: str = "/tmp/log-triage-agent-ws"
     autofix_min_confidence: float = 0.5
@@ -103,8 +100,13 @@ class Settings(BaseSettings):
         return f"{self.github_output_owner}/{self.github_output_repo}"
 
     @property
-    def autofix_target_full_repo(self) -> str:
-        return f"{self.autofix_target_owner}/{self.autofix_target_repo}"
+    def autofix_repo_set(self) -> set[str]:
+        repos = set()
+        for name in self.autofix_repos.split(","):
+            name = name.strip().lower()
+            if name:
+                repos.add(name if "/" in name else f"{self.github_output_owner.lower()}/{name}")
+        return repos
 
 
 @lru_cache

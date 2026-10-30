@@ -72,8 +72,7 @@ class ProposedPatch(BaseModel):
 class VerifyResult(BaseModel):
     applied: bool = False
     tests_passed: bool = False
-    attempts: int = 0
-    last_output: str = ""  # truncated stdout/stderr for PR body
+    run_url: str | None = None
     failure_reason: str | None = None
 
 

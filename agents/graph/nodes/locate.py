@@ -47,9 +47,10 @@ def locate_node(state: TriageState) -> TriageState:
         log.info("locate.low_confidence", file=best.file_path, confidence=confidence)
         return {"autofix": outcome}
 
+    owner, _, name = state["output_repo"].partition("/")
     outcome.suspect = SuspectSite(
-        repo_owner=settings.autofix_target_owner,
-        repo_name=settings.autofix_target_repo,
+        repo_owner=owner,
+        repo_name=name,
         file_path=best.file_path,
         line=best.line,
         symbol=best.symbol,

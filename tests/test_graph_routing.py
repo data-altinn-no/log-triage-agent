@@ -20,9 +20,7 @@ def _clear_settings_cache():
 
 def _settings(**overrides) -> Settings:
     base = dict(
-        autofix_enabled=True,
-        autofix_target_owner="data-altinn-no",
-        autofix_target_repo="plugin-tilda",
+        autofix_enabled=True, autofix_repos="plugin-tilda", github_output_owner="data-altinn-no"
     )
     base.update(overrides)
     return Settings(**base)
@@ -34,45 +32,56 @@ def _result(**overrides) -> TriageResult:
     return TriageResult(**base)
 
 
+def _state(repo="data-altinn-no/plugin-tilda", **result) -> dict:
+    return {"result": _result(**result), "output_repo": repo}
+
+
 def _patch(monkeypatch, settings: Settings) -> None:
     monkeypatch.setattr("agents.graph.runner.get_settings", lambda: settings)
 
 
-def test_routes_to_locate_when_fully_configured(monkeypatch):
+def test_routes_to_locate_when_the_routed_repo_is_allowed(monkeypatch):
     _patch(monkeypatch, _settings())
-    assert _route_after_enrich({"result": _result()}) == "locate"
+    assert _route_after_enrich(_state()) == "locate"
 
 
 def test_kill_switch_skips_the_fix_branch(monkeypatch):
     _patch(monkeypatch, _settings(autofix_enabled=False))
-    assert _route_after_enrich({"result": _result()}) == "publish"
+    assert _route_after_enrich(_state()) == "publish"
 
 
 def test_duplicate_skips_the_fix_branch(monkeypatch):
     _patch(monkeypatch, _settings())
-    assert _route_after_enrich({"result": _result(is_duplicate=True)}) == "publish"
+    assert _route_after_enrich(_state(is_duplicate=True)) == "publish"
 
 
 @pytest.mark.parametrize(
-    "overrides",
+    "repos, routed",
     [
-        {"autofix_target_owner": ""},
-        {"autofix_target_repo": ""},
-        {"autofix_target_owner": "", "autofix_target_repo": ""},
+        ("", "data-altinn-no/plugin-tilda"),
+        ("plugin-nav", "data-altinn-no/plugin-tilda"),
+        ("plugin-tilda", "data-altinn-no/plugin-tilda-old"),
+        ("plugin-tilda", "someone-else/plugin-tilda"),
     ],
 )
-def test_unconfigured_target_repo_skips_the_fix_branch(monkeypatch, overrides):
-    _patch(monkeypatch, _settings(**overrides))
-    assert _route_after_enrich({"result": _result()}) == "publish"
+def test_a_repo_outside_the_allowlist_skips_the_fix_branch(monkeypatch, repos, routed):
+    _patch(monkeypatch, _settings(autofix_repos=repos))
+    assert _route_after_enrich(_state(repo=routed)) == "publish"
+
+
+def test_allowlist_accepts_full_names_spaces_and_case(monkeypatch):
+    _patch(monkeypatch, _settings(autofix_repos=" core , Data-Altinn-No/Plugin-Tilda "))
+    assert _route_after_enrich(_state(repo="data-altinn-no/plugin-tilda")) == "locate"
+    assert _route_after_enrich(_state(repo="data-altinn-no/core")) == "locate"
 
 
 def test_missing_result_still_routes_to_locate(monkeypatch):
     # No enrichment result is not, by itself, a reason to skip the fix branch;
     # locate applies its own confidence gate.
     _patch(monkeypatch, _settings())
-    assert _route_after_enrich({}) == "locate"
+    assert _route_after_enrich({"output_repo": "data-altinn-no/plugin-tilda"}) == "locate"
 
 
 def test_kill_switch_wins_over_everything(monkeypatch):
-    _patch(monkeypatch, _settings(autofix_enabled=False, autofix_target_repo=""))
-    assert _route_after_enrich({"result": _result(is_duplicate=True)}) == "publish"
+    _patch(monkeypatch, _settings(autofix_enabled=False))
+    assert _route_after_enrich(_state(is_duplicate=True)) == "publish"
