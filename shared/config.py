@@ -55,10 +55,8 @@ class Settings(BaseSettings):
     # Only this flag lets an unsigned webhook through - never a missing secret.
     dev_mode: bool = False
 
-    # autofix_enabled is a runtime kill-switch; autofix_repos lists the routed
-    # repos fixes may be proposed in, as names under github_output_owner.
+    # Runtime kill-switch; fixes go to whichever repo the issue was routed to.
     autofix_enabled: bool = False
-    autofix_repos: str = ""
     autofix_verify_event: str = "verify-fix"
     autofix_verify_workflow: str = "verify-fix.yml"
     autofix_verify_timeout_s: int = 1200
@@ -99,14 +97,6 @@ class Settings(BaseSettings):
     def output_full_repo(self) -> str:
         return f"{self.github_output_owner}/{self.github_output_repo}"
 
-    @property
-    def autofix_repo_set(self) -> set[str]:
-        repos = set()
-        for name in self.autofix_repos.split(","):
-            name = name.strip().lower()
-            if name:
-                repos.add(name if "/" in name else f"{self.github_output_owner.lower()}/{name}")
-        return repos
 
 
 @lru_cache

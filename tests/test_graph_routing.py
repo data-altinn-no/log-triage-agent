@@ -19,9 +19,7 @@ def _clear_settings_cache():
 
 
 def _settings(**overrides) -> Settings:
-    base = dict(
-        autofix_enabled=True, autofix_repos="plugin-tilda", github_output_owner="data-altinn-no"
-    )
+    base = dict(autofix_enabled=True)
     base.update(overrides)
     return Settings(**base)
 
@@ -40,7 +38,7 @@ def _patch(monkeypatch, settings: Settings) -> None:
     monkeypatch.setattr("agents.graph.runner.get_settings", lambda: settings)
 
 
-def test_routes_to_locate_when_the_routed_repo_is_allowed(monkeypatch):
+def test_routes_to_locate_when_enabled(monkeypatch):
     _patch(monkeypatch, _settings())
     assert _route_after_enrich(_state()) == "locate"
 
@@ -55,23 +53,13 @@ def test_duplicate_skips_the_fix_branch(monkeypatch):
     assert _route_after_enrich(_state(is_duplicate=True)) == "publish"
 
 
-@pytest.mark.parametrize(
-    "repos, routed",
-    [
-        ("", "data-altinn-no/plugin-tilda"),
-        ("plugin-nav", "data-altinn-no/plugin-tilda"),
-        ("plugin-tilda", "data-altinn-no/plugin-tilda-old"),
-        ("plugin-tilda", "someone-else/plugin-tilda"),
-    ],
-)
-def test_a_repo_outside_the_allowlist_skips_the_fix_branch(monkeypatch, repos, routed):
-    _patch(monkeypatch, _settings(autofix_repos=repos))
-    assert _route_after_enrich(_state(repo=routed)) == "publish"
+def test_no_routed_repo_skips_the_fix_branch(monkeypatch):
+    _patch(monkeypatch, _settings())
+    assert _route_after_enrich({"result": _result()}) == "publish"
 
 
-def test_allowlist_accepts_full_names_spaces_and_case(monkeypatch):
-    _patch(monkeypatch, _settings(autofix_repos=" core , Data-Altinn-No/Plugin-Tilda "))
-    assert _route_after_enrich(_state(repo="data-altinn-no/plugin-tilda")) == "locate"
+def test_any_routed_repo_goes_to_locate(monkeypatch):
+    _patch(monkeypatch, _settings())
     assert _route_after_enrich(_state(repo="data-altinn-no/core")) == "locate"
 
 

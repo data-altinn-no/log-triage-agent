@@ -133,18 +133,16 @@ attacker-influenceable: anyone who can trigger a logged exception with a
 controlled message controls text that reaches the fix agent's prompt. See the
 threat model in [`docs/AUTO_FIX_DESIGN.md`](docs/AUTO_FIX_DESIGN.md).
 
-Configuration: list the repos in `AUTOFIX_REPOS` (e.g. `plugin-kartverket`),
-then `AUTOFIX_ENABLED=true`. The App needs Contents and Pull requests write on
+Configuration: `AUTOFIX_ENABLED=true`. Fixes go to the repo the issue was
+routed to, so the App's installation decides where PRs can be opened. The App needs Contents and Pull requests write on
 those repos, and Contents write plus Actions read on `log-triage` to start and
 follow the verify run. Per-issue override: apply the
 `no-auto-fix` label to the input issue. Operator override: flip
 `AUTOFIX_ENABLED` to `false` at runtime to suspend PR creation during an
 incident without redeploying.
 
-Rollout is scoped by the target-repo allowlist, not by a feature flag — the
-pipeline is always on, but it only opens PRs against the repos you point it
-at. See [`docs/AUTO_FIX_DESIGN.md`](docs/AUTO_FIX_DESIGN.md) for the full
-design, the hardening roadmap, and stage-gated allowlist rollout.
+See [`docs/AUTO_FIX_DESIGN.md`](docs/AUTO_FIX_DESIGN.md) for the full design
+and the hardening roadmap.
 
 ## Deployment
 

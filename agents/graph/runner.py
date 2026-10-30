@@ -22,12 +22,14 @@ def _route_after_enrich(state: TriageState) -> str:
     We skip the fix branch entirely when:
     - auto-fix is disabled,
     - the issue is a duplicate of an existing public one,
-    - the routed repo is not in AUTOFIX_REPOS.
+    - no repo was routed.
+
+    Which repos a fix can land in is decided by where the GitHub App is installed.
     """
     settings = get_settings()
     if not settings.autofix_enabled:
         return "publish"
-    if (state.get("output_repo") or "").lower() not in settings.autofix_repo_set:
+    if not state.get("output_repo"):
         return "publish"
     result = state.get("result")
     if result is not None and result.is_duplicate:

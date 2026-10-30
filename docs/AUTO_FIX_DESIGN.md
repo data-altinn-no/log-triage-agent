@@ -1,6 +1,6 @@
 # Auto-fix design — from triage to pull request
 
-**Status:** implemented. Rolling out via target-repo allowlist.
+**Status:** implemented. Off until `AUTOFIX_ENABLED=true`.
 **Scope:** the agent's core workflow — receive a production error, open a
 triage issue, propose a fix, and raise a pull request.
 
@@ -139,13 +139,9 @@ class TriageState(TypedDict, total=False):
 single temp dir under `AUTOFIX_WORKDIR`, cleaned up on exit (including on
 exception). Subprocess-only; never imports git in-process.
 
-Hardening tiers, current → planned:
-
-| Tier | Where we are | What it takes |
-| --- | --- | --- |
-| 1 — Unprivileged subprocess, scrubbed env | ✅ current | — |
-| 2 — Containerized test runs (`docker run --network=none --read-only`) | planned | Wrap `ws.run_command` in a container call; add an `AUTOFIX_SANDBOX_IMAGE` setting |
-| 3 — Per-attempt ACA job | future | Spawn a Container Apps job per fix; gives VM-level isolation at ~10s cold-start cost |
+Repo code is never built or run in the workspace. The workspace only clones,
+applies the diff and pushes; building and testing happen in the `verify-fix`
+workflow in `log-triage`, on a fresh GitHub runner with a read-only token.
 
 ## Configuration
 
@@ -154,7 +150,6 @@ All `AUTOFIX_*` settings live in `shared/config.py`:
 | Setting | Purpose |
 | --- | --- |
 | `AUTOFIX_ENABLED` | Runtime kill-switch. Flip to `false` to suspend PR creation during incidents without redeploying. |
-| `AUTOFIX_REPOS` | Comma-separated routed repos fixes may be proposed in. PRs target each repo's default branch. |
 | `AUTOFIX_VERIFY_EVENT` / `AUTOFIX_VERIFY_WORKFLOW` | The dispatch event and workflow file in `log-triage` that build and test the branch. |
 | `AUTOFIX_VERIFY_TIMEOUT_S` | How long to wait for the verify run. |
 | `AUTOFIX_MAX_DIFF_LINES` | Hard cap on proposed diff size. |
@@ -179,22 +174,13 @@ All `AUTOFIX_*` settings live in `shared/config.py`:
 Pattern: **any failure downgrades to publish-only**. There is no regression
 of today's baseline behaviour.
 
-## Rollout (repo-level, not feature-level)
+## Scope
 
-The implementation is complete. Rollout is scoped by which target repos
-the agent is allowed to open PRs against. This is a deliberately narrow
-allowlist, expanded as evidence accumulates.
-
-1. **Stage A — single allowlisted repo.** `AUTOFIX_REPOS` names
-   one low-risk service. All `auto-fix` PRs reviewed by the service's
-   CODEOWNERS. Metric of interest: merge rate and time-to-close.
-2. **Stage B — broadened allowlist.** Add further repos once Stage A
-   produces a meaningful merge rate and no incidents.
-3. **Stage C — org-wide default.** Only after Stage B has matured.
-
-The `AUTOFIX_ENABLED=false` default in `.env.example` protects against
-accidental enablement in a half-configured environment; the intended
-production posture is `AUTOFIX_ENABLED=true` with a scoped target repo.
+Fixes go to the repo the issue was routed to, against its default branch, so
+the GitHub App's installation decides where a PR can be opened. Every PR is a
+draft that a person reviews and merges; a ruleset on default branches keeps the
+App from pushing to them directly. `AUTOFIX_ENABLED=false` turns the fix branch
+off everywhere at once, and the `no-auto-fix` label skips it for one issue.
 
 ## Safeguards
 
@@ -205,8 +191,8 @@ production posture is `AUTOFIX_ENABLED=true` with a scoped target repo.
 - **Runtime kill-switch** (`AUTOFIX_ENABLED=false`) suspends PR creation
   without redeploying.
 - **Scoped token.** GitHub App or fine-grained PAT with `contents: write` +
-  `pull_requests: write` only on the allowlisted repo; no admin scope, so
-  the agent cannot bypass branch protection.
+  `pull_requests: write` only on the repos the App is installed on; no admin
+  scope, so the agent cannot bypass branch protection.
 - **Per-day rate limit.** Planned; currently bounded implicitly by the
   30-minute App Insights poll cadence and fingerprint-based deduplication.
   Treat that bound as weak: in practice a single upstream condition produced
@@ -225,10 +211,10 @@ The controls that matter for this, specifically:
 - Tests must pass locally before anything is pushed.
 - The agent can only ever open a PR; humans merge, always.
 - Branch protection and CODEOWNERS are enforced on the target repo.
-- The token is scoped to the allowlisted repo with no admin scope, so the agent
-  cannot bypass branch protection.
-- The test subprocess runs with a scrubbed environment, so the agent's own
-  credentials are not readable by code it just wrote.
+- The token is scoped to the App's installation with no admin scope, so the
+  agent cannot bypass branch protection.
+- Tests run on a GitHub runner with a read-only token, never in the agent's
+  container, so code it just wrote cannot read the agent's credentials.
 
 None of these are optional hardening. They are the reason an
 attacker-influenceable input is acceptable at all.

@@ -35,9 +35,9 @@ Approximate cost at low traffic: **under 10 USD/month**.
 
 - **GitHub App or fine-grained PAT** with `Issues: write` on BOTH
   `data-altinn-no/log-triage` and `data-altinn-no/core`. For the auto-fix
-  branch, additionally `contents: write` + `pull_requests: write` on the
-  allowlisted target repo only — no admin scope, so the agent cannot bypass
-  branch protection.
+  branch, additionally `contents: write` + `pull_requests: write` on the repos
+  it is installed on — no admin scope, so the agent cannot bypass branch
+  protection.
 - A webhook on `log-triage` → `https://<container-app-fqdn>/webhooks/github`,
   content-type `application/json`, shared secret matching
   `GITHUB_WEBHOOK_SECRET`, event **Issues** only.

@@ -191,8 +191,7 @@ the failing code, so the App must be installed on those repos. `REPO_ROUTES`
 overrides a route without a redeploy.
 
 `AUTOFIX_ENABLED` stays `false` until the read, triage and publish path has run
-end to end on a real issue. Turning it on additionally needs `AUTOFIX_REPOS`
-(the repos fixes may be proposed in), the `verify-fix` workflow in `log-triage`,
+end to end on a real issue. Turning it on additionally needs the `verify-fix` workflow in `log-triage`,
 and these App permissions: Contents and Pull requests write, and Actions read.
 
 ### 6e. Get the public URL and add the webhook to `log-triage`
