@@ -37,7 +37,6 @@ class TriageResult(BaseModel):
     root_cause_hypothesis: str = ""
     suggested_owner: str | None = None
     related_issue_numbers: list[int] = Field(default_factory=list)
-    labels: list[str] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of: int | None = None
 

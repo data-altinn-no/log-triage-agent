@@ -133,7 +133,6 @@ def publish_node(state: TriageState) -> TriageState:
     # Case 2 — new issue: create in public repo, then close private.
     labels = sorted({
         settings.published_label,
-        *result.labels,
         f"severity:{result.severity}",
         f"category:{result.category}",
     })

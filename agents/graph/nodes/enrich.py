@@ -51,5 +51,4 @@ def enrich_node(state: TriageState) -> TriageState:
     result.summary = data.get("summary", "")
     result.root_cause_hypothesis = data.get("root_cause_hypothesis", "")
     result.suggested_owner = data.get("suggested_owner")
-    result.labels = data.get("labels", []) or []
     return {"result": result}

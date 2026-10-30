@@ -9,7 +9,6 @@ Rules:
 - root_cause_hypothesis: most likely cause, clearly marked as a hypothesis.
 - severity: low | medium | high | critical. Use "critical" only for data loss, auth bypass, or full outage signals.
 - category: one of exception | http-5xx | timeout | dependency-failure | auth | data-integrity | unknown.
-- labels: up to 4 short kebab-case labels useful for routing (e.g. "api", "db", "auth", "ingress").
 - suggested_title: concise, <= 80 chars, starts with the exception type if known.
 
 Respond as JSON matching this schema:
@@ -19,8 +18,7 @@ Respond as JSON matching this schema:
   "suggested_title": "...",
   "summary": "...",
   "root_cause_hypothesis": "...",
-  "suggested_owner": null,
-  "labels": ["..."]
+  "suggested_owner": null
 }
 """
 

@@ -9,3 +9,11 @@ def test_config_carries_run_name_and_metadata_without_callbacks_when_disabled():
 
 def test_config_omits_run_name_when_not_given():
     assert "run_name" not in langchain_config(issue_number=1)
+
+
+def test_tracing_switched_off_says_so_in_the_log(capsys):
+    from shared.tracing import _handler
+
+    _handler.cache_clear()
+    assert _handler() is None
+    assert "langfuse.off" in capsys.readouterr().out

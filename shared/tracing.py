@@ -25,6 +25,7 @@ def _handler() -> Any | None:
     """Build the Langfuse callback handler once, or None if unavailable."""
     settings = get_settings()
     if not settings.langfuse_enabled:
+        log.info("langfuse.off", reason="LANGFUSE_ENABLED is not true")
         return None
     if not settings.langfuse_public_key or not settings.langfuse_secret_key:
         log.warning("langfuse.disabled", reason="LANGFUSE_PUBLIC_KEY/SECRET_KEY not set")
