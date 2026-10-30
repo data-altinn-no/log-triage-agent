@@ -79,5 +79,11 @@ def run_triage(*, issue_number: int, title: str, body: str, labels: list[str]) -
     }
     return graph.invoke(
         initial,
-        config=langchain_config(issue_number=issue_number, issue_title=title),
+        config=langchain_config(
+            run_name=f"triage #{issue_number}",
+            issue_number=issue_number,
+            issue_title=title,
+            # Langfuse groups a redelivered webhook's runs under one session.
+            langfuse_session_id=f"log-triage#{issue_number}",
+        ),
     )

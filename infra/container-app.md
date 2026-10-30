@@ -96,6 +96,7 @@ az keyvault secret set --vault-name $KV --name foundry-key       --value "<paste
 az keyvault secret set --vault-name $KV --name webhook-secret    --value "$(openssl rand -hex 32)"
 # The client id and installation id are not secret; they go in as plain env vars.
 az keyvault secret set --vault-name $KV --name gh-app-private-key --file ./key.pem
+az keyvault secret set --vault-name $KV --name langfuse-secret-key --value "<sk-lf-...>"
 ```
 
 ## 5. Create the Container Apps environment
@@ -151,7 +152,8 @@ KV_URI=$(az keyvault show -g $RG -n $KV --query properties.vaultUri -o tsv)
 az containerapp secret set -g $RG -n $APP --secrets \
     foundry-key=keyvaultref:${KV_URI}secrets/foundry-key,identityref:system \
     webhook-secret=keyvaultref:${KV_URI}secrets/webhook-secret,identityref:system \
-    gh-app-private-key=keyvaultref:${KV_URI}secrets/gh-app-private-key,identityref:system
+    gh-app-private-key=keyvaultref:${KV_URI}secrets/gh-app-private-key,identityref:system \
+    langfuse-secret-key=keyvaultref:${KV_URI}secrets/langfuse-secret-key,identityref:system
 ```
 
 The container reads these as regular secrets, but Container Apps refreshes them
@@ -176,7 +178,12 @@ az containerapp update -g $RG -n $APP --set-env-vars \
     GITHUB_OUTPUT_OWNER=data-altinn-no \
     GITHUB_OUTPUT_REPO=core \
     \
-    AUTOFIX_ENABLED=false
+    AUTOFIX_ENABLED=false \
+    \
+    LANGFUSE_ENABLED=true \
+    LANGFUSE_BASE_URL=https://langfuse.digdir.cloud \
+    LANGFUSE_PUBLIC_KEY=<pk-lf-...> \
+    LANGFUSE_SECRET_KEY=secretref:langfuse-secret-key
 ```
 
 `GITHUB_OUTPUT_REPO` is only a fallback. Issues are routed to the repo that owns
@@ -264,7 +271,7 @@ az containerapp revision activate -g $RG -n $APP --revision <prev-revision-name>
 ```bash
 az keyvault secret set --vault-name $KV --name webhook-secret --value "$(openssl rand -hex 32)"
 # No app restart needed — Container Apps refreshes Key Vault references.
-# But: update the GitHub App webhook config to the new value too.
+# But: update the Secret on the log-triage repository webhook to the new value too.
 ```
 
 ### Disable auto-fix during an incident

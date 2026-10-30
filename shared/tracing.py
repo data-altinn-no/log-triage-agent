@@ -53,13 +53,15 @@ def _handler() -> Any | None:
     return handler
 
 
-def langchain_config(**metadata: Any) -> dict[str, Any]:
+def langchain_config(run_name: str | None = None, **metadata: Any) -> dict[str, Any]:
     """Build a LangChain/LangGraph run config, with tracing when enabled.
 
     Returns a plain config dict; `callbacks` is omitted entirely when Langfuse
     is off, so the graph runs exactly as before.
     """
     config: dict[str, Any] = {}
+    if run_name:
+        config["run_name"] = run_name
     if metadata:
         config["metadata"] = metadata
     handler = _handler()
