@@ -39,6 +39,8 @@ class TriageResult(BaseModel):
     related_issue_numbers: list[int] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of: int | None = None
+    duplicate_closed: bool = False
+    is_regression: bool = False
 
 
 RiskLevel = Literal["low", "medium", "high"]

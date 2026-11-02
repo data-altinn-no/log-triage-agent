@@ -89,7 +89,7 @@ def _run_fix(monkeypatch, state, run):
     return fake, fix.fix_node(state)["autofix"]
 
 
-def test_a_fix_that_passes_ci_opens_a_draft_pr_into_the_routed_repo(monkeypatch, state):
+def test_a_fix_that_passes_ci_opens_a_pr_into_the_routed_repo(monkeypatch, state):
     fake, outcome = _run_fix(monkeypatch, state, _Run("success"))
 
     assert fake.dispatched[0]["full_repo"] == "data-altinn-no/plugin-x"

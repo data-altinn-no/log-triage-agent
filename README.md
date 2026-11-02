@@ -127,11 +127,11 @@ Non-duplicate errors flow through `locate → plan → fix` after enrichment:
 - **`fix`** clones into a sandbox workspace, checks out the exact commit `plan`
   worked against, applies the diff, commits and pushes an `auto-fix/` branch,
   then has the `verify-fix` workflow in `log-triage` build and test it on a
-  GitHub runner. Only a green run opens a draft PR, linked to that run; a red
+  GitHub runner. Only a green run opens a PR, linked to that run; a red
   one deletes the branch.
 
 Repo code is never built inside the agent's container, which holds its keys,
-and the agent can only ever open a draft PR — humans merge. That matters because the input is
+and the agent can only ever open a PR — humans review and merge. That matters because the input is
 attacker-influenceable: anyone who can trigger a logged exception with a
 controlled message controls text that reaches the fix agent's prompt. See the
 threat model in [`docs/AUTO_FIX_DESIGN.md`](docs/AUTO_FIX_DESIGN.md).

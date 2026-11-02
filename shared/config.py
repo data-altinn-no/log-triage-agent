@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     triage_label: str = "auto-triage-errors,auto-triage-exceptions,auto-triage"
     published_label: str = "auto-published"
     publish_failed_label: str = "publish-failed"
+    regression_label: str = "regression"
+    # Merging closes the issue before the fix is deployed.
+    regression_grace_minutes: int = 60
 
     # Also accepts LANGFUSE_BASE_URL; extra="ignore" would silently drop it.
     langfuse_enabled: bool = False

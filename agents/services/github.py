@@ -96,15 +96,18 @@ def hold_input_issue(number: int, *, label: str, comment: str) -> None:
 # ---------- output repo (public published issues) ----------
 
 def find_output_issue_by_fingerprint(
-    fingerprint: str, full_repo: str | None = None
+    fingerprint: str, full_repo: str | None = None, *, state: str = "open"
 ) -> Issue | None:
-    """Search the OUTPUT repo for an open issue carrying this fingerprint marker."""
+    """Search the OUTPUT repo for an issue in `state` carrying this fingerprint marker.
+
+    For closed issues, the most recently updated one wins.
+    """
     repo = full_repo or get_settings().output_full_repo
     query = (
-        f"repo:{repo} is:issue is:open "
+        f"repo:{repo} is:issue is:{state} "
         f'"{FINGERPRINT_MARKER} {fingerprint}"'
     )
-    for issue in client().search_issues(query=query):
+    for issue in client().search_issues(query=query, sort="updated", order="desc"):
         return issue
     return None
 
@@ -119,7 +122,13 @@ def comment_output_issue(number: int, body: str, full_repo: str | None = None) -
     output_repo(full_repo).get_issue(number=number).create_comment(body)
 
 
-# ---------- auto-fix (code fixes via draft PR) ----------
+def reopen_output_issue(number: int, *, label: str, full_repo: str | None = None) -> None:
+    issue = output_repo(full_repo).get_issue(number=number)
+    issue.edit(state="open")
+    issue.add_to_labels(label)
+
+
+# ---------- auto-fix (code fixes via PR) ----------
 
 def default_branch(full_repo: str) -> str:
     return client().get_repo(full_repo).default_branch
@@ -161,15 +170,21 @@ def open_autofix_pr(
     body: str,
     labels: list[str],
 ):
-    """Open a draft PR from `branch` into `base`. Returns the PyGithub PR."""
+    """Open a PR from `branch` into `base`. Returns the PyGithub PR."""
     repo = client().get_repo(full_repo)
-    pr = repo.create_pull(title=title, body=body, head=branch, base=base, draft=True)
+    pr = repo.create_pull(title=title, body=body, head=branch, base=base)
     if labels:
         try:
             repo.get_issue(pr.number).add_to_labels(*labels)
         except Exception as exc:  # labels are best-effort
             log.warning("pr.label_failed", pr=pr.number, error=str(exc))
     return pr
+
+
+def link_pr_to_issue(*, full_repo: str, pr_number: int, issue_number: int) -> None:
+    """Add a closing keyword so merging the PR closes the issue."""
+    pr = client().get_repo(full_repo).get_pull(pr_number)
+    pr.edit(body=f"{pr.body or ''}\n\nFixes #{issue_number}")
 
 
 # ---------- shared ----------

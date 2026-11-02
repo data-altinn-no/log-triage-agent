@@ -109,7 +109,7 @@ non-serializable objects ever cross LangGraph state boundaries:
    checks the branch out on a GitHub runner and runs `dotnet restore`, `build`
    and `test`, the same steps the shared deploy flow runs. The agent finds the
    run by its title and waits up to `AUTOFIX_VERIFY_TIMEOUT_S`.
-6. On a green run, open a **draft** PR linked to the run, with labels
+6. On a green run, open a PR linked to the run, with labels
    `auto-fix`, `needs-review`, `severity:<x>`.
 
 A red, unfinished or missing run deletes the branch and falls through to
@@ -177,9 +177,9 @@ of today's baseline behaviour.
 ## Scope
 
 Fixes go to the repo the issue was routed to, against its default branch, so
-the GitHub App's installation decides where a PR can be opened. Every PR is a
-draft that a person reviews and merges; a ruleset on default branches keeps the
-App from pushing to them directly. `AUTOFIX_ENABLED=false` turns the fix branch
+the GitHub App's installation decides where a PR can be opened. A person reviews
+and merges every PR; a ruleset on default branches requires an approval and keeps
+the App from pushing to them directly. `AUTOFIX_ENABLED=false` turns the fix branch
 off everywhere at once, and the `no-auto-fix` label skips it for one issue.
 
 ## Safeguards

@@ -1,4 +1,4 @@
-"""fix node: apply the proposed diff, push a branch, have CI test it, open a draft PR.
+"""fix node: apply the proposed diff, push a branch, have CI test it, open a PR.
 
 Building runs on a GitHub runner, never here, so repo code never sees the agent's keys.
 """
