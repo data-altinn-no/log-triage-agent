@@ -17,7 +17,7 @@ anyio==4.14.2
     #   watchfiles
 backoff==2.2.1
     # via langfuse
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -100,17 +100,17 @@ langchain-protocol==0.0.18
     #   langgraph-sdk
 langfuse==3.15.0
     # via -r requirements.txt
-langgraph==1.2.11
+langgraph==1.2.19
     # via
     #   -r requirements.txt
     #   langchain
-langgraph-checkpoint==4.2.0
+langgraph-checkpoint==4.3.1
     # via
     #   langgraph
     #   langgraph-prebuilt
 langgraph-prebuilt==1.1.0
     # via langgraph
-langgraph-sdk==0.4.2
+langgraph-sdk==0.4.11
     # via langgraph
 langsmith==0.10.18
     # via langchain-core
@@ -118,25 +118,31 @@ openai==3.0.0
     # via
     #   langchain-openai
     #   langfuse
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.2
     # via
     #   langfuse
+    #   opentelemetry-exporter-http-transport
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-http-transport==0.66b2
     # via opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-exporter-otlp-common==0.66b2
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-common==1.45.2
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-http==1.45.2
     # via langfuse
-opentelemetry-proto==1.44.0
+opentelemetry-proto==1.45.2
     # via
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-sdk==1.44.0
+opentelemetry-sdk==1.45.2
     # via
     #   langfuse
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-semantic-conventions==0.65b0
+opentelemetry-semantic-conventions==0.66b2
     # via opentelemetry-sdk
 orjson==3.11.9
     # via
@@ -192,6 +198,7 @@ regex==2026.7.19
 requests==2.34.2
     # via
     #   langsmith
+    #   opentelemetry-exporter-http-transport
     #   opentelemetry-exporter-otlp-proto-http
     #   pygithub
     #   requests-toolbelt
