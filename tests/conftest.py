@@ -8,7 +8,6 @@ sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
 os.environ.setdefault("GITHUB_TOKEN", "test-token")
-os.environ.setdefault("AZURE_OPENAI_API_KEY", "test")
 os.environ.setdefault("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
 
 # Force-off, not setdefault: a real .env would send spans to live Langfuse.

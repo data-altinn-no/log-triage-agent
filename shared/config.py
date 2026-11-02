@@ -10,14 +10,12 @@ class Settings(BaseSettings):
     # "azure_openai" or "azure_ai_foundry" (Claude via the Messages API).
     llm_provider: str = "azure_ai_foundry"
 
-    azure_openai_api_key: str = ""
     azure_openai_endpoint: str = ""
     azure_openai_api_version: str = "2024-08-01-preview"
     azure_openai_deployment: str = "gpt-4o"
 
     # Endpoint must end in /anthropic - that suffix routes to the Messages API.
     azure_ai_foundry_endpoint: str = ""
-    azure_ai_foundry_api_key: str = ""
     azure_ai_foundry_model: str = "claude-opus-5-5"
 
     # input: private triage repo the monitor writes to.

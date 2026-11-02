@@ -84,7 +84,9 @@ def run_triage(*, issue_number: int, title: str, body: str, labels: list[str]) -
         config=langchain_config(
             run_name=f"triage #{issue_number}",
             issue_number=issue_number,
-            issue_title=title,
+            # Langfuse drops propagated metadata values over 200 characters.
+            issue_title=title[:190],
+            langfuse_trace_name=f"triage #{issue_number}",
             # Langfuse groups a redelivered webhook's runs under one session.
             langfuse_session_id=f"log-triage#{issue_number}",
         ),

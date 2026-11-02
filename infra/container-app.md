@@ -33,7 +33,9 @@ The shape:
 
   It is installed on `log-triage` only. Add each repo the agent publishes to
   before pointing the agent at it.
-- An Azure AI Foundry project with a Claude model deployed.
+- The lab's Foundry account `team-dataaltinnno-ai` (subscription `Altinn-AI-Assistant`,
+  resource group `rg-team-dataaltinnno-swc`) with `claude-opus-5-5` deployed. API keys are
+  off on the account; the agent authenticates with Entra ID.
 
 ## 0. Variables
 
@@ -78,8 +80,10 @@ In the Azure portal:
 3. Accept the Anthropic terms.
 4. After deployment, copy:
    - **Endpoint** — looks like `https://<resource>.services.ai.azure.com`
-   - **Key** — under "Keys and Endpoint"
    - **Model name**: `claude-opus-5-5`, or whatever deployment name you chose
+
+There is no key to copy: the account has API keys turned off, and the app's managed
+identity gets the `Foundry User` role in step 6a.
 
 > **Important:** the agent needs the endpoint **suffixed with `/anthropic`** to
 > hit the native Messages API. So if Foundry shows
@@ -92,7 +96,6 @@ In the Azure portal:
 az keyvault create -g $RG -n $KV -l $LOC --enable-rbac-authorization true
 
 # Stash secrets — repeat per secret. Replace the literal values.
-az keyvault secret set --vault-name $KV --name foundry-key       --value "<paste-key>"
 az keyvault secret set --vault-name $KV --name webhook-secret    --value "$(openssl rand -hex 32)"
 # The client id and installation id are not secret; they go in as plain env vars.
 az keyvault secret set --vault-name $KV --name gh-app-private-key --file ./key.pem
@@ -128,7 +131,7 @@ Two identities are configured here:
 - `--registry-identity system` — the system-assigned managed identity pulls images from ACR.
 - `--system-assigned` — the same identity will read secrets from Key Vault.
 
-### 6a. Grant the identity access to ACR and Key Vault
+### 6a. Grant the identity access to ACR, Key Vault and Foundry
 
 ```bash
 PRINCIPAL=$(az containerapp show -g $RG -n $APP --query identity.principalId -o tsv)
@@ -142,6 +145,16 @@ az role assignment create --assignee $PRINCIPAL --role AcrPull --scope $ACR_ID
 az role assignment create --assignee $PRINCIPAL --role "Key Vault Secrets User" --scope $KV_ID
 ```
 
+Then the model. The Foundry account is in another subscription, so the lab grants this
+role; send them `$PRINCIPAL`:
+
+```bash
+FOUNDRY_ID=$(az cognitiveservices account show \
+  --subscription Altinn-AI-Assistant -g rg-team-dataaltinnno-swc -n team-dataaltinnno-ai \
+  --query id -o tsv)
+az role assignment create --assignee $PRINCIPAL --role "Foundry User" --scope $FOUNDRY_ID
+```
+
 ### 6b. Wire Key Vault secrets into the app
 
 Container Apps supports Key Vault secret references natively:
@@ -150,7 +163,6 @@ Container Apps supports Key Vault secret references natively:
 KV_URI=$(az keyvault show -g $RG -n $KV --query properties.vaultUri -o tsv)
 
 az containerapp secret set -g $RG -n $APP --secrets \
-    foundry-key=keyvaultref:${KV_URI}secrets/foundry-key,identityref:system \
     webhook-secret=keyvaultref:${KV_URI}secrets/webhook-secret,identityref:system \
     gh-app-private-key=keyvaultref:${KV_URI}secrets/gh-app-private-key,identityref:system \
     langfuse-secret-key=keyvaultref:${KV_URI}secrets/langfuse-secret-key,identityref:system
@@ -164,9 +176,8 @@ from Key Vault automatically — no redeploy needed when you rotate.
 ```bash
 az containerapp update -g $RG -n $APP --set-env-vars \
     LLM_PROVIDER=azure_ai_foundry \
-    AZURE_AI_FOUNDRY_ENDPOINT="https://<your-foundry>.services.ai.azure.com/anthropic" \
+    AZURE_AI_FOUNDRY_ENDPOINT=https://team-dataaltinnno-ai.services.ai.azure.com/anthropic \
     AZURE_AI_FOUNDRY_MODEL=claude-opus-5-5 \
-    AZURE_AI_FOUNDRY_API_KEY=secretref:foundry-key \
     \
     GITHUB_APP_CLIENT_ID=Iv23liiNUwNGaW4WADGG \
     GITHUB_APP_INSTALLATION_ID=157246034 \

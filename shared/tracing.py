@@ -39,11 +39,11 @@ def _handler() -> Any | None:
         return None
 
     try:
-        # v3 initialises a client singleton; the handler picks it up by key.
+        # Registers the client the handler looks up by public key.
         Langfuse(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
-            host=settings.langfuse_host,
+            base_url=settings.langfuse_host,
         )
         handler = CallbackHandler(public_key=settings.langfuse_public_key)
     except Exception as exc:  # noqa: BLE001 — never let tracing break triage

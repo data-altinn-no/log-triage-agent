@@ -66,6 +66,8 @@ a deploy. The six exceptions are `core`, `proxy`, `plugin-skatteetaten`,
 - Two LLM providers, selected by `LLM_PROVIDER`:
   - `azure_ai_foundry` — Anthropic Claude via the Messages API on Azure AI
     Foundry (`claude-opus-5-5` by default). This is the maintained path.
+  - Both authenticate with Entra ID, never keys: `az login` locally, the
+    Container App's managed identity in Azure.
   - `azure_openai` — Azure-hosted OpenAI. Its deployment and API version
     predate the current surface; review before relying on it.
 - PyGithub for GitHub API
@@ -81,7 +83,8 @@ Regenerate with `uv pip compile requirements.txt -o requirements.lock.txt`.
 ```bash
 pip install -r requirements-dev.txt
 cp .env.example .env
-# fill in the LLM provider keys, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET
+# fill in GITHUB_TOKEN and GITHUB_WEBHOOK_SECRET
+az login   # model calls use Entra ID; needs Foundry User on the account
 
 uvicorn api.main:app --reload --port 8081
 ```

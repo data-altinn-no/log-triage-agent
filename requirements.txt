@@ -15,8 +15,10 @@ langchain>=1.0,<2.0
 langchain-core>=1.0,<2.0
 langchain-openai>=1.0,<2.0
 langchain-anthropic>=1.0,<2.0
+anthropic>=0.122,<1.0
+azure-identity>=1.19,<2.0
 
-# Each major changed the callback API; tracing.py targets v3.
-langfuse>=3.0,<4.0
+# Each major changed the callback API; tracing.py targets v5 (needs server v4.59+).
+langfuse>=5.0,<6.0
 
 structlog>=24.4,<26.0
