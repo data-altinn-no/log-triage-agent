@@ -1,4 +1,5 @@
 import json
+import threading
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 
@@ -10,12 +11,30 @@ from shared.logging import get_logger
 log = get_logger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
+_in_flight: set[int] = set()
+_in_flight_lock = threading.Lock()
 
-def _should_process(action: str, labels: list[str]) -> bool:
+
+def _should_process(action: str, labels: list[str], added_label: str | None, state: str) -> bool:
     settings = get_settings()
-    if action not in {"opened", "reopened", "labeled"}:
+    if action not in {"opened", "reopened", "labeled"} or state == "closed":
+        return False
+    if action == "labeled" and added_label not in settings.triage_labels:
         return False
     return bool(settings.triage_labels & set(labels))
+
+
+def _claim(number: int) -> bool:
+    with _in_flight_lock:
+        if number in _in_flight:
+            return False
+        _in_flight.add(number)
+        return True
+
+
+def _release(number: int) -> None:
+    with _in_flight_lock:
+        _in_flight.discard(number)
 
 
 @router.post("/github", status_code=status.HTTP_202_ACCEPTED)
@@ -38,6 +57,8 @@ async def github_webhook(
     title = issue.get("title", "")
     issue_body = issue.get("body") or ""
     labels = [label.get("name") for label in issue.get("labels", []) if label.get("name")]
+    added_label = (payload.get("label") or {}).get("name")
+    state = issue.get("state", "")
 
     if not number:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing issue.number")
@@ -48,9 +69,13 @@ async def github_webhook(
         log.info("webhook.other_repo", repo=repo, number=number)
         return {"skipped": True, "reason": f"repository={repo}"}
 
-    if not _should_process(action, labels):
-        log.info("webhook.skipped", number=number, action=action, labels=labels)
+    if not _should_process(action, labels, added_label, state):
+        log.info("webhook.skipped", number=number, action=action, labels=labels, state=state)
         return {"skipped": True, "action": action}
+
+    if not _claim(number):
+        log.info("webhook.in_flight", number=number, action=action)
+        return {"skipped": True, "reason": "in_flight"}
 
     log.info("webhook.accepted", number=number, action=action)
     background.add_task(
@@ -68,3 +93,5 @@ def _run_safely(*, issue_number: int, title: str, body: str, labels: list[str]) 
         run_triage(issue_number=issue_number, title=title, body=body, labels=labels)
     except Exception as exc:  # noqa: BLE001
         log.exception("triage.failed", number=issue_number, error=str(exc))
+    finally:
+        _release(issue_number)

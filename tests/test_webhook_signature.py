@@ -1,10 +1,12 @@
 import hashlib
 import hmac
 import json
+import threading
 
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.routes.webhooks import _in_flight
 from shared.config import get_settings
 
 client = TestClient(app)
@@ -180,3 +182,88 @@ def test_a_labelled_issue_in_the_input_repo_is_accepted(monkeypatch):
     resp = _post(_labelled(_repo()))
     assert resp.json() == {"accepted": True, "number": 45}
     assert calls and calls[0]["issue_number"] == 45
+
+
+def _event(action: str, number: int, *, added: str | None = None, state: str = "open") -> bytes:
+    labels = ["prod", "source:app-insights", "auto-triage"]
+    payload = {
+        "action": action,
+        "repository": _repo(),
+        "issue": {
+            "number": number,
+            "title": "t",
+            "body": "x",
+            "state": state,
+            "labels": [{"name": n} for n in labels],
+        },
+    }
+    if added:
+        payload["label"] = {"name": added}
+    return json.dumps(payload).encode()
+
+
+def test_opened_and_labeled_events_for_a_new_issue_start_one_run(monkeypatch):
+    started, finish = threading.Event(), threading.Event()
+    calls = []
+
+    def slow_triage(**kw):
+        calls.append(kw)
+        started.set()
+        finish.wait(5)
+
+    monkeypatch.setattr("api.routes.webhooks.run_triage", slow_triage)
+    opened = threading.Thread(target=_post, args=(_event("opened", 60),))
+    opened.start()
+    assert started.wait(5)
+
+    responses = [
+        _post(_event("labeled", 60, added=name)).json()
+        for name in ("prod", "source:app-insights", "auto-triage")
+    ]
+    finish.set()
+    opened.join(5)
+
+    assert len(calls) == 1
+    assert all(r["skipped"] for r in responses)
+    assert responses[-1] == {"skipped": True, "reason": "in_flight"}
+
+
+def test_labeled_with_a_non_triage_label_is_skipped(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    resp = _post(_event("labeled", 61, added="prod"))
+    assert resp.json() == {"skipped": True, "action": "labeled"} and calls == []
+
+
+def test_labeled_with_the_triage_label_is_accepted(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    resp = _post(_event("labeled", 62, added="auto-triage"))
+    assert resp.json() == {"accepted": True, "number": 62} and len(calls) == 1
+
+
+def test_a_closed_issue_is_skipped(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    for action, added in (("reopened", None), ("labeled", "auto-triage")):
+        resp = _post(_event(action, 63, added=added, state="closed"))
+        assert resp.json()["skipped"] is True
+    assert calls == []
+
+
+def test_the_guard_is_released_after_a_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.routes.webhooks.run_triage", lambda **kw: calls.append(kw))
+    assert _post(_event("opened", 64)).json()["accepted"] is True
+    assert _post(_event("opened", 64)).json()["accepted"] is True
+    assert len(calls) == 2 and 64 not in _in_flight
+
+
+def test_the_guard_is_released_after_a_run_that_raised(monkeypatch):
+    def boom(**kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("api.routes.webhooks.run_triage", boom)
+    assert _post(_event("opened", 65)).json()["accepted"] is True
+    assert 65 not in _in_flight
+    assert _post(_event("opened", 65)).json()["accepted"] is True
